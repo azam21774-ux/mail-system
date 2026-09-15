@@ -1263,7 +1263,24 @@ function App() {
       .map((header) => `{{${header}}}`),
   ]
 
+  const previewRecipient = csvRows[0] || {}
+  const previewRecipientValue = (key, fallback = '') => {
+    const entry = Object.entries(previewRecipient).find(
+      ([header]) => header.toLowerCase() === key
+    )
+    return String(entry?.[1] || fallback).trim()
+  }
+  const previewEmail = previewRecipientValue(
+    'email',
+    'recipient@example.com'
+  )
+  const previewName = previewRecipientValue(
+    'name',
+    previewEmail.split('@')[0].replace(/[._-]+/g, ' ').trim()
+  )
   const previewTagValues = {
+    '{{email}}': previewEmail,
+    '{{name}}': previewName,
     '{{random_name}}': 'Emily Carter',
     '{{spanish_name}}': 'Lucía García',
     '{{date}}': new Intl.DateTimeFormat('en-IN', {
