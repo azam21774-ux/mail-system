@@ -1349,6 +1349,10 @@ function App() {
               <span>Delay</span>
               <strong>{delaySeconds}s</strong>
             </div>
+            <div>
+              <span>Typing</span>
+              <strong>{typingDelayMs}ms</strong>
+            </div>
           </div>
         </div>
       </section>
@@ -1833,6 +1837,9 @@ function App() {
                             'No profile assigned'}
                           <span>
                             · {campaign.delaySeconds ?? 0}s delay
+                          </span>
+                          <span>
+                            · {campaign.typingDelayMs ?? 0}ms typing
                           </span>
                         </p>
 

@@ -187,8 +187,8 @@ async function sendOneEmail(page, payload, row, attachmentPath) {
       await fileChooser.accept([attachmentPath])
     }
 
-    // Do not fill recipient, subject, or body until Gmail visibly shows the
-    // uploaded filename and no upload progress indicator remains.
+    // Do not fill recipient, subject, or body until Gmail shows the
+    // attachment chip and no upload progress indicator remains.
     await waitForAttachmentUpload(page)
   }
 
