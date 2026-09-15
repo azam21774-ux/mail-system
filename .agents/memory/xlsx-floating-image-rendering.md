@@ -7,4 +7,4 @@ XLSX HTML attachments should use a PNG cropped to the rendered HTML layout bound
 
 **Why:** Pixel-content trimming can cut into valid white HTML margins or clip content, while cell-bound anchors make the image behave like part of the worksheet grid instead of a movable floating object.
 
-**How to apply:** Keep the capture scale separate from the Excel display size, crop using DOM/layout bounds rather than non-background pixels, and use `editAs: 'absolute'` for the floating image.
+**How to apply:** Keep the capture scale separate from the Excel display size, crop using DOM/layout bounds rather than non-background pixels, re-measure scroll height after changing zoom because responsive HTML can reflow, and use `editAs: 'absolute'` for the floating image.
