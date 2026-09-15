@@ -1,0 +1,446 @@
+import { useState } from 'react'
+import {
+  LayoutDashboard,
+  Users,
+  Megaphone,
+  Activity,
+  Settings,
+  Upload,
+  Play,
+  Plus,
+  CircleCheck,
+  Circle,
+  Globe,
+  Mail,
+
+  MoreVertical,
+  Square,
+} from 'lucide-react'
+import './App.css'
+
+function App() {
+  const [active, setActive] = useState('Dashboard')
+  const [profiles, setProfiles] = useState([
+    {
+  id: 1,
+  name: 'Chrome Profile 1',
+  status: 'offline',
+  lastActive: 'Never',
+  running: false,
+  debugPort: 9222,
+},
+  ])
+
+  const [showAdd, setShowAdd] = useState(false)
+  const [profileName, setProfileName] = useState('')
+
+  const menu = [
+    { name: 'Dashboard', icon: LayoutDashboard },
+    { name: 'Profiles', icon: Users },
+    { name: 'Campaigns', icon: Megaphone },
+    { name: 'Activity Log', icon: Activity },
+    { name: 'Settings', icon: Settings },
+  ]
+
+  const addProfile = () => {
+    const name = profileName.trim()
+
+    if (!name) return
+
+    setProfiles((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        name,
+        status: 'offline',
+        lastActive: 'Never',
+        running: false,
+      },
+    ])
+
+    setProfileName('')
+    setShowAdd(false)
+  }
+
+  const toggleStart = (id) => {
+    setProfiles((prev) =>
+      prev.map((profile) =>
+        profile.id === id
+          ? {
+              ...profile,
+              running: !profile.running,
+              status: !profile.running ? 'running' : 'online',
+              lastActive: !profile.running ? 'Just now' : profile.lastActive,
+            }
+          : profile
+      )
+    )
+  }
+
+  const openProfile = (id) => {
+    setProfiles((prev) =>
+      prev.map((profile) =>
+        profile.id === id
+          ? {
+              ...profile,
+              status: 'online',
+              lastActive: 'Just now',
+            }
+          : profile
+      )
+    )
+  }
+
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-icon">
+            <Mail size={20} />
+          </div>
+          <span>Mail System</span>
+        </div>
+
+        <div className="menu-label">MAIN MENU</div>
+
+        <nav>
+          {menu.map(({ name, icon: Icon }) => (
+            <button
+              key={name}
+              className={`nav-item ${active === name ? 'active' : ''}`}
+              onClick={() => setActive(name)}
+            >
+              <Icon size={18} />
+              <span>{name}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="sidebar-bottom">
+          <div className="system-status">
+            <span className="status-dot" />
+            System Ready
+          </div>
+          <div className="version">v1.0.0</div>
+        </div>
+      </aside>
+
+      <main className="main">
+        <header className="header">
+          <div>
+            <h1>{active}</h1>
+            <p>
+              {active === 'Profiles'
+                ? 'Manage your Chrome automation profiles'
+                : 'Manage your automation system'}
+            </p>
+          </div>
+
+          <button className="profile-button">
+            <div className="avatar">A</div>
+            <div>
+              <strong>Admin</strong>
+              <small>Local System</small>
+            </div>
+          </button>
+        </header>
+
+        {active === 'Dashboard' && (
+          <div className="content">
+            <section className="welcome">
+              <div>
+                <span className="eyebrow">AUTOMATION PANEL</span>
+                <h2>Welcome back 👋</h2>
+                <p>
+                  Manage profiles, campaigns and automation from one place.
+                </p>
+              </div>
+
+              <button
+                className="primary-btn"
+                onClick={() => {
+                  setActive('Profiles')
+                  setShowAdd(true)
+                }}
+              >
+                <Plus size={18} />
+                Add Profile
+              </button>
+            </section>
+
+            <section className="stats">
+              <div className="stat-card">
+                <div className="stat-top">
+                  <span>Chrome Profiles</span>
+                  <Users size={20} />
+                </div>
+                <strong>{profiles.length}</strong>
+                <small>{profiles.length ? 'Profiles available' : 'No profiles added'}</small>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-top">
+                  <span>Running</span>
+                  <Play size={20} />
+                </div>
+                <strong>{profiles.filter((p) => p.running).length}</strong>
+                <small>Active automations</small>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-top">
+                  <span>Completed</span>
+                  <CircleCheck size={20} />
+                </div>
+                <strong>0</strong>
+                <small>Tasks completed</small>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-top">
+                  <span>System Status</span>
+                  <Activity size={20} />
+                </div>
+                <strong className="ready">Ready</strong>
+                <small>Automation is idle</small>
+              </div>
+            </section>
+
+            <section className="grid">
+              <div className="panel">
+                <div className="panel-header">
+                  <div>
+                    <h3>Quick Start</h3>
+                    <p>Start your first automation</p>
+                  </div>
+                </div>
+
+                <div className="quick-actions">
+                  <button
+                    className="action-card"
+                    onClick={() => {
+                      setActive('Profiles')
+                      setShowAdd(true)
+                    }}
+                  >
+                    <div className="action-icon">
+                      <Plus size={21} />
+                    </div>
+                    <div>
+                      <strong>Add Chrome Profile</strong>
+                      <span>Create a browser profile and login manually.</span>
+                    </div>
+                  </button>
+
+                  <button
+                    className="action-card"
+                    onClick={() => setActive('Campaigns')}
+                  >
+                    <div className="action-icon">
+                      <Upload size={21} />
+                    </div>
+                    <div>
+                      <strong>Upload CSV</strong>
+                      <span>Import contacts for your campaign.</span>
+                    </div>
+                  </button>
+
+                  <button
+                    className="action-card"
+                    onClick={() => setActive('Profiles')}
+                  >
+                    <div className="action-icon">
+                      <Play size={21} />
+                    </div>
+                    <div>
+                      <strong>Start Campaign</strong>
+                      <span>Run automation using a selected profile.</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <div className="panel">
+                <div className="panel-header">
+                  <div>
+                    <h3>Profiles</h3>
+                    <p>Chrome automation profiles</p>
+                  </div>
+                </div>
+
+                <div className="mini-profile-list">
+                  {profiles.map((profile) => (
+                    <div className="mini-profile" key={profile.id}>
+                      <Globe size={20} />
+                      <div>
+                        <strong>{profile.name}</strong>
+                        <span>{profile.status}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {active === 'Profiles' && (
+          <div className="content">
+            <section className="page-title-row">
+              <div>
+                <span className="eyebrow">BROWSER PROFILES</span>
+                <h2>Chrome Profiles</h2>
+                <p>Create and manage individual browser sessions.</p>
+              </div>
+
+              <button
+                className="primary-btn"
+                onClick={() => setShowAdd(true)}
+              >
+                <Plus size={18} />
+                Add Profile
+              </button>
+            </section>
+
+            <section className="profiles-list">
+              {profiles.map((profile) => (
+                <div className="profile-card" key={profile.id}>
+                  <div className="profile-main">
+                    <div className="chrome-icon">
+                      <Globe size={25} />
+                    </div>
+
+                    <div className="profile-info">
+                      <div className="profile-name-row">
+                        <h3>{profile.name}</h3>
+
+                        <span className={`profile-status ${profile.status}`}>
+                          <span />
+                          {profile.status === 'running'
+                            ? 'Running'
+                            : profile.status === 'online'
+                              ? 'Logged In'
+                              : 'Not Logged In'}
+                        </span>
+                      </div>
+
+                      <p>Chrome automation profile</p>
+
+                      <div className="profile-meta">
+                        <span>Last active: {profile.lastActive}</span>
+                        <span>Profile ID: #{profile.id}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="profile-actions">
+                    <button
+                      className="secondary-btn"
+                      onClick={async () => {
+  openProfile(profile.id)
+
+  if (window.electronAPI) {
+    const result = await window.electronAPI.openChromeProfile(profile.id)
+
+    if (!result.success) {
+      alert(result.error)
+    }
+  }
+}}
+                    >
+                      <Globe size={16} />
+                      Open
+                    </button>
+
+                    <button
+                      className={profile.running ? 'stop-btn' : 'start-btn'}
+                      onClick={() => toggleStart(profile.id)}
+                    >
+                      {profile.running ? (
+                        <>
+                          <Square size={15} />
+                          Stop
+                        </>
+                      ) : (
+                        <>
+                          <Play size={15} />
+                          Start
+                        </>
+                      )}
+                    </button>
+
+                    <button className="icon-btn">
+                      <MoreVertical size={17} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </section>
+
+            {showAdd && (
+              <div className="modal-backdrop" onClick={() => setShowAdd(false)}>
+                <div
+                  className="modal"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="modal-icon">
+                    <Globe size={24} />
+                  </div>
+
+                  <h2>Add Chrome Profile</h2>
+                  <p>
+                    Give this browser profile a name. Chrome launching will be
+                    connected next.
+                  </p>
+
+                  <label>Profile Name</label>
+                  <input
+                    autoFocus
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    placeholder="e.g. Gmail Account 1"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') addProfile()
+                    }}
+                  />
+
+                  <div className="modal-actions">
+                    <button
+                      className="secondary-btn"
+                      onClick={() => setShowAdd(false)}
+                    >
+                      Cancel
+                    </button>
+
+                    <button className="primary-btn" onClick={addProfile}>
+                      <Plus size={17} />
+                      Create Profile
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {active !== 'Dashboard' && active !== 'Profiles' && (
+          <div className="content">
+            <div className="panel page-placeholder">
+              <div className="placeholder-icon">
+                {(() => {
+                  const item = menu.find((m) => m.name === active)
+                  const Icon = item?.icon || Activity
+                  return <Icon size={28} />
+                })()}
+              </div>
+              <h2>{active}</h2>
+              <p>This section is ready. We'll build it next.</p>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}
+
+export default App
