@@ -149,6 +149,9 @@ async function waitForAttachmentUpload(page) {
 
 async function clickGmailSend(page) {
   const sendSelectors = [
+    'div.dC > div[role="button"].aoO[data-tooltip^="Send"]',
+    'div[role="button"][data-tooltip^="Send"]',
+    'div[role="button"][aria-label^="Send"]',
     'div[role="button"][aria-label^="Send"]',
     'button[aria-label*="Send" i]',
     '[aria-label^="Send"]',
@@ -213,6 +216,15 @@ async function clickGmailSend(page) {
   }, selector)
 
   return true
+}
+
+async function pressMacSendShortcut(page) {
+  await page.keyboard.down('Meta')
+  try {
+    await page.keyboard.press('Enter')
+  } finally {
+    await page.keyboard.up('Meta')
+  }
 }
 
 async function sendOneEmail(page, payload, row, attachmentPath) {
@@ -293,9 +305,9 @@ async function sendOneEmail(page, payload, row, attachmentPath) {
   const clickedSendButton = await clickGmailSend(page)
 
   if (!clickedSendButton) {
-    // Gmail exposes send as Meta+Enter on macOS. This fallback also handles
-    // compose variants where the toolbar button has no stable aria label.
-    await page.keyboard.press('Meta+Enter')
+    // Puppeteer requires modifier keys to be held separately; "Meta+Enter"
+    // is not a valid key name.
+    await pressMacSendShortcut(page)
   }
 
   const composeClosed = await page
@@ -308,7 +320,7 @@ async function sendOneEmail(page, payload, row, attachmentPath) {
 
   if (!composeClosed && clickedSendButton) {
     // The toolbar can be visible before Gmail is ready to accept the click.
-    await page.keyboard.press('Meta+Enter')
+    await pressMacSendShortcut(page)
   }
 
   const sent = await page
