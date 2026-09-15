@@ -8,3 +8,5 @@ XLSX HTML attachments should use a full-document Chromium screenshot, with its l
 **Why:** Viewport-based BrowserWindow captures can cut long HTML after responsive reflow, while pixel-content trimming can cut valid white margins; cell-bound anchors also make the image behave like part of the worksheet grid instead of a movable floating object.
 
 **How to apply:** Capture with Chromium DevTools `Page.captureScreenshot` and `captureBeyondViewport`, keep capture scale separate from Excel display size, make overflow visible for attachment rendering, and use `editAs: 'absolute'` for the floating image.
+
+The full-document DevTools capture approach has been confirmed working in the macOS Excel output.
