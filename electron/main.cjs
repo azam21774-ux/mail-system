@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
 const { spawn } = require('child_process')
+const crypto = require('crypto')
 const path = require('path')
 const fs = require('fs')
 const puppeteer = require('puppeteer-core')
@@ -8,8 +9,178 @@ const CHROME_PATH =
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
 const profilesRoot = path.join(app.getPath('userData'), 'chrome-profiles')
+const campaignJobs = new Map()
 
 let mainWindow
+
+const wait = (milliseconds) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds))
+
+const randomId = () => {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  const bytes = crypto.randomBytes(10)
+
+  return Array.from({ length: 10 }, (_value, index) =>
+    alphabet[bytes[index] % alphabet.length]
+  ).join('')
+}
+
+function getRecipientValue(row, key) {
+  const requestedKey = key.toLowerCase()
+  const entry = Object.entries(row || {}).find(
+    ([name]) => name.trim().toLowerCase() === requestedKey
+  )
+
+  return String(entry?.[1] || '').trim()
+}
+
+function createTemplateContext(row) {
+  const email = getRecipientValue(row, 'email')
+  const name =
+    getRecipientValue(row, 'name') ||
+    email.split('@')[0].replace(/[._-]+/g, ' ').trim()
+  const randomNames = [
+    'Aarav Sharma',
+    'Ananya Patel',
+    'Rohan Mehta',
+    'Priya Kapoor',
+    'Kabir Verma',
+  ]
+  const spanishNames = [
+    'Lucía García',
+    'Mateo Rodríguez',
+    'Sofía Martínez',
+    'Diego Fernández',
+    'Elena Torres',
+  ]
+  return {
+    email,
+    name,
+    random_name:
+      randomNames[crypto.randomInt(0, randomNames.length)] || randomNames[0],
+    spanish_name:
+      spanishNames[crypto.randomInt(0, spanishNames.length)] ||
+      spanishNames[0],
+    date: new Intl.DateTimeFormat('en-IN', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    }).format(new Date()),
+    id: randomId(),
+  }
+}
+
+function expandTemplate(template, row, context = createTemplateContext(row)) {
+  return String(template || '').replace(/\{\{([^}]+)\}\}/g, (match, key) => {
+    const normalizedKey = String(key).trim().toLowerCase()
+    return Object.prototype.hasOwnProperty.call(context, normalizedKey)
+      ? context[normalizedKey]
+      : getRecipientValue(row, normalizedKey) || match
+  })
+}
+
+async function connectToGmail(port) {
+  const response = await fetch(`http://127.0.0.1:${port}/json/version`)
+
+  if (!response.ok) {
+    throw new Error('Chrome profile is not running.')
+  }
+
+  const info = await response.json()
+  const browser = await puppeteer.connect({
+    browserWSEndpoint: info.webSocketDebuggerUrl,
+    defaultViewport: null,
+  })
+  const pages = await browser.pages()
+  let page = pages.find((candidate) =>
+    candidate.url().includes('mail.google.com')
+  )
+
+  if (!page) {
+    page = pages[0] || (await browser.newPage())
+    await page.goto('https://mail.google.com/mail/u/0/#inbox', {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000,
+    })
+  }
+
+  await page.bringToFront()
+  await page.waitForSelector(
+    '[gh="cm"], [aria-label="Compose"], [role="button"][aria-label="Compose"]',
+    { visible: true, timeout: 30000 }
+  )
+
+  return { browser, page }
+}
+
+async function sendOneEmail(page, payload, row, attachmentPath) {
+  const email = getRecipientValue(row, 'email')
+
+  if (!email) {
+    throw new Error('This CSV row does not contain an email address.')
+  }
+
+  const context = createTemplateContext(row)
+  const expandedSubject = expandTemplate(payload.subject, row, context)
+  const body = expandTemplate(payload.body, row, context)
+  const composeButton = await page.waitForSelector(
+    '[gh="cm"], [aria-label="Compose"], [role="button"][aria-label="Compose"]',
+    { visible: true, timeout: 15000 }
+  )
+
+  await composeButton.click()
+
+  if (attachmentPath) {
+    const attachmentButton = await page.waitForSelector(
+      '[command="Files"], [aria-label*="Attach"], .a1.aaA.aMZ',
+      { visible: true, timeout: 15000 }
+    )
+    await attachmentButton.click()
+
+    const fileInput = await page.waitForSelector('input[type="file"]', {
+      timeout: 15000,
+    })
+    await fileInput.uploadFile(attachmentPath)
+    await wait(500)
+  }
+
+  const recipientInput = await page.waitForSelector(
+    'input[aria-label="To recipients"], input[role="combobox"][aria-autocomplete="list"]',
+    { visible: true, timeout: 15000 }
+  )
+  await recipientInput.click()
+  await recipientInput.type(email)
+  await page.keyboard.press('Enter')
+
+  const subjectInput = await page.waitForSelector('input[name="subjectbox"]', {
+    visible: true,
+    timeout: 15000,
+  })
+  await subjectInput.click()
+  await subjectInput.type(expandedSubject)
+
+  const messageBody = await page.waitForSelector(
+    '[aria-label="Message Body"][contenteditable="true"], div[role="textbox"][contenteditable="true"]',
+    { visible: true, timeout: 15000 }
+  )
+  await messageBody.click()
+
+  if (payload.htmlMode) {
+    await messageBody.evaluate((element, html) => {
+      element.innerHTML = html
+      element.dispatchEvent(new InputEvent('input', { bubbles: true }))
+    }, body)
+  } else {
+    await messageBody.type(body)
+  }
+
+  const sendButton = await page.waitForSelector(
+    '[aria-label^="Send"], [data-tooltip^="Send"], [command="send"]',
+    { visible: true, timeout: 15000 }
+  )
+  await sendButton.click()
+  await wait(600)
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -73,6 +244,135 @@ ipcMain.handle('start-profile', async (_event, port) => {
       error: 'Open this Chrome profile first, then click Start.',
     }
   }
+})
+
+ipcMain.handle('run-campaign', async (_event, payload) => {
+  const campaignId = String(payload?.campaignId || '')
+  const job = {
+    cancelled: false,
+  }
+
+  if (!campaignId) {
+    return { success: false, error: 'Campaign ID is required.' }
+  }
+
+  if (campaignJobs.has(campaignId)) {
+    return { success: false, error: 'This campaign is already running.' }
+  }
+
+  campaignJobs.set(campaignId, job)
+
+  let browser
+  let attachmentPath
+  let sent = 0
+  let failed = 0
+  const recipients = Array.isArray(payload.recipients)
+    ? payload.recipients
+    : []
+
+  const emitProgress = (progress) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    mainWindow.webContents.send('campaign-progress', {
+      campaignId: payload.campaignId,
+      ...progress,
+    })
+  }
+
+  try {
+    if (!recipients.length) {
+      throw new Error('The campaign CSV does not contain any recipients.')
+    }
+
+    if (payload.attachment?.data) {
+      attachmentPath = path.join(
+        app.getPath('temp'),
+        `mail-system-${Date.now()}-${path.basename(
+          payload.attachment.name || 'attachment'
+        )}`
+      )
+      fs.writeFileSync(
+        attachmentPath,
+        Buffer.from(new Uint8Array(payload.attachment.data))
+      )
+    }
+
+    const connection = await connectToGmail(payload.port)
+    browser = connection.browser
+
+    for (const row of recipients) {
+      if (job.cancelled) {
+        emitProgress({
+          status: 'Paused',
+          sent,
+          failed,
+          pending: recipients.length - sent - failed,
+        })
+        return { success: false, cancelled: true, sent, failed }
+      }
+
+      const email = getRecipientValue(row, 'email')
+
+      try {
+        await sendOneEmail(connection.page, payload, row, attachmentPath)
+        sent += 1
+        emitProgress({
+          status: 'Running',
+          sent,
+          failed,
+          pending: recipients.length - sent - failed,
+          recipientEmail: email,
+        })
+      } catch (error) {
+        failed += 1
+        emitProgress({
+          status: 'Running',
+          sent,
+          failed,
+          pending: recipients.length - sent - failed,
+          recipientEmail: email,
+          error: error.message,
+        })
+      }
+
+      if (payload.delaySeconds > 0 && sent + failed < recipients.length) {
+        await wait(Number(payload.delaySeconds) * 1000)
+      }
+    }
+
+    emitProgress({
+      status: failed > 0 && sent === 0 ? 'Failed' : 'Completed',
+      sent,
+      failed,
+      pending: recipients.length - sent - failed,
+    })
+
+    return { success: true, sent, failed }
+  } catch (error) {
+    emitProgress({
+      status: 'Failed',
+      sent,
+      failed,
+      pending: Math.max(recipients.length - sent - failed, 0),
+      error: error.message,
+    })
+
+    return { success: false, error: error.message, sent, failed }
+  } finally {
+    campaignJobs.delete(campaignId)
+    if (browser) browser.disconnect()
+    if (attachmentPath && fs.existsSync(attachmentPath)) {
+      fs.unlinkSync(attachmentPath)
+    }
+  }
+})
+
+ipcMain.handle('stop-campaign', async (_event, campaignId) => {
+  const job = campaignJobs.get(String(campaignId))
+
+  if (!job) return { success: false, error: 'Campaign is not running.' }
+
+  job.cancelled = true
+  return { success: true }
 })
 
 ipcMain.handle('open-chrome-profile', async (_event, profileId, port) => {

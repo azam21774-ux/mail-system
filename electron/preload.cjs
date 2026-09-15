@@ -6,4 +6,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   startProfile: (port) =>
     ipcRenderer.invoke('start-profile', port),
+
+  runCampaign: (payload) =>
+    ipcRenderer.invoke('run-campaign', payload),
+
+  stopCampaign: (campaignId) =>
+    ipcRenderer.invoke('stop-campaign', campaignId),
+
+  onCampaignProgress: (handler) => {
+    const listener = (_event, progress) => handler(progress)
+    ipcRenderer.on('campaign-progress', listener)
+
+    return () => ipcRenderer.removeListener('campaign-progress', listener)
+  },
 })

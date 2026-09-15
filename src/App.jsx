@@ -206,6 +206,99 @@ function App() {
     )
   }
 
+  const runCampaignOnProfile = async (campaign, profile) => {
+    if (activeCampaignRuns.current.has(campaign.id)) return
+
+    if (!campaign.recipientRows?.length) {
+      alert('This campaign has no CSV recipient rows. Upload the CSV again.')
+      return
+    }
+
+    activeCampaignRuns.current.add(campaign.id)
+
+    setCampaigns((prev) =>
+      prev.map((item) =>
+        item.id === campaign.id
+          ? {
+              ...item,
+              status: 'Running',
+              startedAt: item.startedAt || new Date().toLocaleString(),
+            }
+          : item
+      )
+    )
+
+    if (!window.electronAPI?.runCampaign) {
+      activeCampaignRuns.current.delete(campaign.id)
+      return
+    }
+
+    let attachmentPayload = null
+
+    try {
+      if (campaign.attachment?.arrayBuffer) {
+        attachmentPayload = {
+          name: campaign.attachment.name,
+          data: await campaign.attachment.arrayBuffer(),
+        }
+      }
+
+      const result = await window.electronAPI.runCampaign({
+        campaignId: campaign.id,
+        profileId: profile.id,
+        port: profile.debugPort || 9222,
+        recipients: campaign.recipientRows,
+        subject: campaign.subject,
+        body: campaign.body,
+        htmlMode: campaign.htmlMode,
+        delaySeconds: campaign.delaySeconds ?? 0,
+        attachment: attachmentPayload,
+      })
+
+      if (!result?.success) {
+        setCampaigns((prev) =>
+          prev.map((item) =>
+            item.id === campaign.id
+              ? { ...item, status: 'Failed', lastError: result?.error }
+              : item
+          )
+        )
+        alert(result?.error || 'Campaign could not be started.')
+      }
+    } catch (error) {
+      setCampaigns((prev) =>
+        prev.map((item) =>
+          item.id === campaign.id
+            ? { ...item, status: 'Failed', lastError: error.message }
+            : item
+        )
+      )
+      alert(error.message || 'Campaign could not be started.')
+    } finally {
+      activeCampaignRuns.current.delete(campaign.id)
+    }
+  }
+
+  const runAssignedCampaignsForProfile = (profile) => {
+    campaigns
+      .filter((campaign) => {
+        const assignedProfileIds = campaign.profileIds?.length
+          ? campaign.profileIds
+          : campaign.profileId
+            ? [campaign.profileId]
+            : []
+
+        return (
+          assignedProfileIds.includes(profile.id) &&
+          campaign.status !== 'Completed' &&
+          !activeCampaignRuns.current.has(campaign.id)
+        )
+      })
+      .forEach((campaign) => {
+        void runCampaignOnProfile(campaign, profile)
+      })
+  }
+
   const toggleStart = async (profile) => {
     if (profile.running) {
       setProfiles((prev) =>
@@ -216,6 +309,21 @@ function App() {
         )
       )
       pauseCampaignsForProfile(profile.id)
+      campaigns
+        .filter((campaign) => {
+          const assignedProfileIds = campaign.profileIds?.length
+            ? campaign.profileIds
+            : campaign.profileId
+              ? [campaign.profileId]
+              : []
+          return (
+            assignedProfileIds.includes(profile.id) &&
+            campaign.status === 'Running'
+          )
+        })
+        .forEach((campaign) => {
+          void window.electronAPI?.stopCampaign?.(campaign.id)
+        })
       return
     }
 
@@ -246,8 +354,38 @@ function App() {
         )
       )
       startCampaignsForProfile(profile.id)
+      runAssignedCampaignsForProfile(profile)
     }
   }
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onCampaignProgress?.((progress) => {
+      setCampaigns((prev) =>
+        prev.map((campaign) =>
+          campaign.id === progress.campaignId
+            ? {
+                ...campaign,
+                status: progress.status || campaign.status,
+                sent: progress.sent ?? campaign.sent ?? 0,
+                failed: progress.failed ?? campaign.failed ?? 0,
+                pending:
+                  progress.pending ??
+                  Math.max(
+                    (campaign.recipients || 0) -
+                      (progress.sent ?? campaign.sent ?? 0) -
+                      (progress.failed ?? campaign.failed ?? 0),
+                    0
+                  ),
+                lastRecipient: progress.recipientEmail || campaign.lastRecipient,
+                lastError: progress.error || campaign.lastError,
+              }
+            : campaign
+        )
+      )
+    })
+
+    return () => unsubscribe?.()
+  }, [])
 
   const openProfile = async (profile) => {
     setProfiles((prev) =>
@@ -284,6 +422,7 @@ function App() {
     setAttachment(null)
     setRecipientCount(0)
     setCsvHeaders([])
+    setCsvRows([])
     setDelaySeconds(0)
   }
 
@@ -319,6 +458,7 @@ function App() {
     )
     setRecipientCount(campaign.recipients)
     setCsvHeaders(campaign.csvHeaders || [])
+    setCsvRows(campaign.recipientRows || [])
     setDelaySeconds(campaign.delaySeconds ?? 0)
     setEditingCampaignId(campaign.id)
     setActive('Campaigns')
@@ -332,23 +472,18 @@ function App() {
 
     reader.onload = (event) => {
       const text = String(event.target.result || '')
-      const lines = text
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean)
+      const { headers, data } = parseCsvText(text)
 
-      if (!lines.length) {
+      if (!headers.length) {
         setRecipientCount(0)
         setCsvHeaders([])
+        setCsvRows([])
         return
       }
 
-      const headers = lines[0]
-        .split(',')
-        .map((header) => header.trim().replace(/^["']|["']$/g, ''))
-
       setCsvHeaders(headers)
-      setRecipientCount(Math.max(lines.length - 1, 0))
+      setCsvRows(data)
+      setRecipientCount(data.length)
     }
 
     reader.readAsText(file)
@@ -396,6 +531,7 @@ function App() {
       csvFile,
       attachment,
       csvHeaders,
+      recipientRows: csvRows,
       csvName: csvFile.name,
       attachmentName: attachment?.name || null,
       recipients: recipientCount,
@@ -450,17 +586,12 @@ function App() {
       return
     }
 
-    setCampaigns((prev) =>
-      prev.map((item) =>
-        item.id === campaignId
-          ? {
-              ...item,
-              status: 'Running',
-              startedAt: item.startedAt || new Date().toLocaleString(),
-            }
-          : item
-      )
-    )
+    if (!campaign.recipientRows?.length) {
+      alert('This campaign has no CSV recipient rows. Upload the CSV again.')
+      return
+    }
+
+    void runCampaignOnProfile(campaign, runningProfiles[0])
   }
 
   const builtInTags = [
