@@ -233,6 +233,7 @@ function App() {
       setProfileName('')
       setEditingProfileId(null)
       setShowAdd(false)
+      addActivity('profile', 'Profile renamed', `${name} is now the profile name.`)
       return
     }
 
@@ -250,6 +251,7 @@ function App() {
 
     setProfileName('')
     setShowAdd(false)
+    addActivity('profile', 'Profile added', `${name} is ready to be opened.`)
   }
 
   const openAddProfile = () => {
@@ -295,6 +297,7 @@ function App() {
       })
     )
     setOpenProfileMenuId(null)
+    addActivity('profile', 'Profile deleted', `${profile.name} was removed.`)
   }
 
   useEffect(() => {
@@ -370,6 +373,18 @@ function App() {
 
     if (!campaign.recipientRows?.length) {
       alert('This campaign has no CSV recipient rows. Upload the CSV again.')
+      return
+    }
+
+    if (
+      settings.confirmBeforeSend &&
+      !window.confirm(`Start sending "${campaign.name}" now?`)
+    ) {
+      addActivity(
+        'campaign',
+        'Campaign start cancelled',
+        `${campaign.name} was not started.`
+      )
       return
     }
 
@@ -487,6 +502,7 @@ function App() {
         )
       )
       pauseCampaignsForProfile(profile.id)
+      addActivity('profile', 'Profile stopped', `${profile.name} was stopped.`)
       campaigns
         .filter((campaign) => {
           const assignedProfileIds = campaign.profileIds?.length
@@ -533,6 +549,7 @@ function App() {
       )
       startCampaignsForProfile(profile.id)
       runAssignedCampaignsForProfile(profile, true)
+      addActivity('profile', 'Profile started', `${profile.name} is running.`)
     }
   }
 
@@ -569,6 +586,30 @@ function App() {
 
       campaignsRef.current = updatedCampaigns
       setCampaigns(updatedCampaigns)
+
+      if (progress.recipientEmail) {
+        addActivity(
+          progress.error ? 'error' : 'send',
+          progress.error ? 'Email failed' : 'Email sent',
+          `${progress.recipientEmail}${
+            progress.error ? ` — ${progress.error}` : ''
+          }`
+        )
+      }
+
+      if (['Completed', 'Failed', 'Paused'].includes(progress.status)) {
+        addActivity(
+          progress.status === 'Completed'
+            ? 'success'
+            : progress.status === 'Paused'
+              ? 'profile'
+              : 'error',
+          `Campaign ${progress.status.toLowerCase()}`,
+          `Campaign #${progress.campaignId} finished with ${
+            progress.sent || 0
+          } sent and ${progress.failed || 0} failed.`
+        )
+      }
 
       if (
         ['Completed', 'Failed'].includes(progress.status) &&
@@ -626,6 +667,8 @@ function App() {
         alert(result.error)
       }
     }
+
+    addActivity('profile', 'Profile opened', `${profile.name} was opened.`)
   }
 
   const resetCampaignForm = () => {
@@ -639,7 +682,7 @@ function App() {
     setRecipientCount(0)
     setCsvHeaders([])
     setCsvRows([])
-    setDelaySeconds(0)
+    setDelaySeconds(settings.defaultDelay ?? 0)
   }
 
   const openCampaignCreator = () => {
@@ -768,6 +811,11 @@ function App() {
     )
     setShowCreateCampaign(false)
     setEditingCampaignId(null)
+    addActivity(
+      'campaign',
+      editingCampaignId ? 'Campaign updated' : 'Campaign created',
+      `${campaign.name} has been saved.`
+    )
     resetCampaignForm()
   }
 
@@ -779,6 +827,7 @@ function App() {
     if (!confirmed) return
 
     setCampaigns((prev) => prev.filter((item) => item.id !== campaign.id))
+    addActivity('campaign', 'Campaign deleted', `${campaign.name} was removed.`)
   }
 
   const startCampaign = (campaignId) => {
@@ -1308,6 +1357,10 @@ function App() {
                 ? 'Manage your Chrome automation profiles'
                 : active === 'Campaigns'
                   ? 'Create and manage email campaigns'
+                  : active === 'Activity Log'
+                    ? 'Review profile, campaign and delivery events'
+                    : active === 'Settings'
+                      ? 'Configure automation defaults and safeguards'
                   : 'Manage your automation system'}
             </p>
           </div>
@@ -1830,23 +1883,172 @@ function App() {
           showCreateCampaign &&
           campaignComposer}
 
-        {active !== 'Dashboard' &&
-          active !== 'Profiles' &&
-          active !== 'Campaigns' && (
-            <div className="content">
-              <div className="panel page-placeholder">
-                <div className="placeholder-icon">
-                  {(() => {
-                    const item = menu.find((m) => m.name === active)
-                    const Icon = item?.icon || Activity
-                    return <Icon size={28} />
-                  })()}
-                </div>
-                <h2>{active}</h2>
-                <p>This section is ready. We'll build it next.</p>
+        {active === 'Activity Log' && (
+          <div className="content">
+            <section className="page-title-row">
+              <div>
+                <span className="eyebrow">SYSTEM ACTIVITY</span>
+                <h2>Activity Log</h2>
+                <p>Track profile actions, campaign runs and email delivery.</p>
               </div>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setActivityLog([])}
+                disabled={!activityLog.length}
+              >
+                Clear log
+              </button>
+            </section>
+
+            {activityLog.length === 0 ? (
+              <div className="panel empty-activity">
+                <div className="placeholder-icon">
+                  <Activity size={28} />
+                </div>
+                <h2>No activity yet</h2>
+                <p>Profile and campaign events will appear here.</p>
+              </div>
+            ) : (
+              <section className="panel activity-panel">
+                <div className="activity-list">
+                  {activityLog.map((event) => (
+                    <div className="activity-item" key={event.id}>
+                      <div className={`activity-icon ${event.type}`}>
+                        {event.type === 'success' || event.type === 'send' ? (
+                          <CircleCheck size={16} />
+                        ) : (
+                          <Activity size={16} />
+                        )}
+                      </div>
+                      <div className="activity-copy">
+                        <strong>{event.title}</strong>
+                        <span>{event.detail}</span>
+                      </div>
+                      <time>{event.time}</time>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+
+        {active === 'Settings' && (
+          <div className="content">
+            <section className="page-title-row">
+              <div>
+                <span className="eyebrow">AUTOMATION SETTINGS</span>
+                <h2>Settings</h2>
+                <p>Set defaults that control new campaign runs.</p>
+              </div>
+            </section>
+
+            <div className="settings-grid">
+              <section className="panel settings-card">
+                <div className="panel-header">
+                  <div>
+                    <h3>Sending defaults</h3>
+                    <p>These values are used when creating a new campaign.</p>
+                  </div>
+                </div>
+
+                <div className="settings-body">
+                  <div className="setting-row setting-range">
+                    <div>
+                      <strong>Default sending delay</strong>
+                      <span>Wait time between two recipients.</span>
+                    </div>
+                    <div className="setting-range-control">
+                      <input
+                        type="range"
+                        min="0"
+                        max="60"
+                        value={settings.defaultDelay}
+                        onChange={(event) => {
+                          setSettings((current) => ({
+                            ...current,
+                            defaultDelay: Number(event.target.value),
+                          }))
+                          setSettingsSaved(false)
+                        }}
+                      />
+                      <strong>{settings.defaultDelay}s</strong>
+                    </div>
+                  </div>
+
+                  <div className="setting-row">
+                    <div>
+                      <strong>Confirm before sending</strong>
+                      <span>Ask before a campaign starts sending emails.</span>
+                    </div>
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={settings.confirmBeforeSend}
+                        onChange={(event) => {
+                          setSettings((current) => ({
+                            ...current,
+                            confirmBeforeSend: event.target.checked,
+                          }))
+                          setSettingsSaved(false)
+                        }}
+                      />
+                      <span />
+                    </label>
+                  </div>
+
+                  <div className="settings-actions">
+                    <button
+                      type="button"
+                      className="primary-btn"
+                      onClick={() => {
+                        setSettingsSaved(true)
+                        addActivity(
+                          'system',
+                          'Settings updated',
+                          'Automation preferences were saved.'
+                        )
+                      }}
+                    >
+                      <Save size={16} />
+                      Save Settings
+                    </button>
+                    {settingsSaved && <span>Saved</span>}
+                  </div>
+                </div>
+              </section>
+
+              <section className="panel settings-card">
+                <div className="panel-header">
+                  <div>
+                    <h3>System overview</h3>
+                    <p>Current local automation state.</p>
+                  </div>
+                </div>
+                <div className="settings-overview">
+                  <div>
+                    <span>Chrome profiles</span>
+                    <strong>{profiles.length}</strong>
+                  </div>
+                  <div>
+                    <span>Saved campaigns</span>
+                    <strong>{campaigns.length}</strong>
+                  </div>
+                  <div>
+                    <span>Running profiles</span>
+                    <strong>{profiles.filter((profile) => profile.running).length}</strong>
+                  </div>
+                  <div>
+                    <span>Activity events</span>
+                    <strong>{activityLog.length}</strong>
+                  </div>
+                </div>
+              </section>
             </div>
-          )}
+          </div>
+        )}
       </main>
     </div>
   )
