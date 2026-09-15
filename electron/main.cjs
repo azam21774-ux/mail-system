@@ -131,12 +131,10 @@ async function sendOneEmail(page, payload, row, attachmentPath) {
   await composeButton.click()
 
   if (attachmentPath) {
-    const attachmentButton = await page.waitForSelector(
-      '[command="Files"], [aria-label*="Attach"], .a1.aaA.aMZ',
-      { visible: true, timeout: 15000 }
-    )
-    await attachmentButton.click()
-
+    // Do not click Gmail's paperclip button here. On macOS that opens a
+    // native file picker, which Puppeteer cannot control and which can leave
+    // the dialog open while the rest of the compose flow continues.
+    // Gmail keeps the file input in the page, so upload directly into it.
     const fileInput = await page.waitForSelector('input[type="file"]', {
       timeout: 15000,
     })
