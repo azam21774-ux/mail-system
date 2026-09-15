@@ -18,6 +18,9 @@ import {
   Save,
   X,
   Code,
+  Pencil,
+  Trash2,
+  CalendarDays,
 } from 'lucide-react'
 import './App.css'
 
@@ -40,6 +43,7 @@ function App() {
 
   const [campaigns, setCampaigns] = useState([])
   const [showCreateCampaign, setShowCreateCampaign] = useState(false)
+  const [editingCampaignId, setEditingCampaignId] = useState(null)
 
   const [campaignName, setCampaignName] = useState('')
   const [subject, setSubject] = useState('')
@@ -157,6 +161,31 @@ function App() {
 
   const openCampaignCreator = () => {
     resetCampaignForm()
+    setEditingCampaignId(null)
+    setShowCreateCampaign(true)
+  }
+
+  const openCampaignEditor = (campaign) => {
+    setCampaignName(campaign.name)
+    setSubject(campaign.subject)
+    setBody(campaign.body)
+    setHtmlMode(campaign.htmlMode)
+    setCsvFile(
+      campaign.csvFile ||
+        (campaign.csvName
+          ? { name: campaign.csvName, size: 0, type: 'text/csv' }
+          : null)
+    )
+    setAttachment(
+      campaign.attachment ||
+        (campaign.attachmentName
+          ? { name: campaign.attachmentName, size: 0 }
+          : null)
+    )
+    setRecipientCount(campaign.recipients)
+    setCsvHeaders(campaign.csvHeaders || [])
+    setEditingCampaignId(campaign.id)
+    setActive('Campaigns')
     setShowCreateCampaign(true)
   }
 
@@ -211,20 +240,52 @@ function App() {
     }
 
     const campaign = {
-      id: Date.now(),
+      id: editingCampaignId || Date.now(),
       name: campaignName.trim(),
       subject,
       body,
       htmlMode,
+      csvFile,
+      attachment,
+      csvHeaders,
       csvName: csvFile.name,
       attachmentName: attachment?.name || null,
       recipients: recipientCount,
-      createdAt: new Date().toLocaleString(),
+      createdAt:
+        campaigns.find((item) => item.id === editingCampaignId)?.createdAt ||
+        new Date().toLocaleString(),
+      updatedAt: new Date().toLocaleString(),
+      status:
+        campaigns.find((item) => item.id === editingCampaignId)?.status ||
+        'Draft',
     }
 
-    setCampaigns((prev) => [campaign, ...prev])
+    setCampaigns((prev) =>
+      editingCampaignId
+        ? prev.map((item) => (item.id === editingCampaignId ? campaign : item))
+        : [campaign, ...prev]
+    )
     setShowCreateCampaign(false)
+    setEditingCampaignId(null)
     resetCampaignForm()
+  }
+
+  const deleteCampaign = (campaign) => {
+    const confirmed = window.confirm(
+      `Delete "${campaign.name}"? This action cannot be undone.`
+    )
+
+    if (!confirmed) return
+
+    setCampaigns((prev) => prev.filter((item) => item.id !== campaign.id))
+  }
+
+  const startCampaign = (campaignId) => {
+    setCampaigns((prev) =>
+      prev.map((item) =>
+        item.id === campaignId ? { ...item, status: 'Running' } : item
+      )
+    )
   }
 
   const tagList = [
@@ -906,22 +967,81 @@ function App() {
               <section className="campaign-list">
                 {campaigns.map((campaign) => (
                   <div className="campaign-card" key={campaign.id}>
-                    <div>
-                      <h3>{campaign.name}</h3>
-                      <p>{campaign.subject}</p>
-                      <div className="campaign-meta">
-                        <span>{campaign.recipients} recipients</span>
-                        <span>{campaign.csvName}</span>
-                        {campaign.attachmentName && (
-                          <span>{campaign.attachmentName}</span>
-                        )}
+                    <div className="campaign-card-main">
+                      <div className="campaign-icon">
+                        <Megaphone size={19} />
+                      </div>
+
+                      <div className="campaign-info">
+                        <div className="campaign-title-row">
+                          <h3>{campaign.name}</h3>
+                          <span
+                            className={`campaign-status ${(
+                              campaign.status || 'Draft'
+                            ).toLowerCase()}`}
+                          >
+                            {campaign.status || 'Draft'}
+                          </span>
+                        </div>
+
+                        <p className="campaign-subject">
+                          <Mail size={14} />
+                          {campaign.subject}
+                        </p>
+
+                        <div className="campaign-meta">
+                          <span>
+                            <Users size={13} />
+                            {campaign.recipients} recipient
+                            {campaign.recipients === 1 ? '' : 's'}
+                          </span>
+                          <span>
+                            <Upload size={13} />
+                            {campaign.csvName}
+                          </span>
+                          {campaign.attachmentName && (
+                            <span>
+                              <Paperclip size={13} />
+                              {campaign.attachmentName}
+                            </span>
+                          )}
+                        </div>
+
+                        <span className="campaign-date">
+                          <CalendarDays size={12} />
+                          Updated {campaign.updatedAt || campaign.createdAt}
+                        </span>
                       </div>
                     </div>
 
-                    <button className="start-btn">
-                      <Play size={15} />
-                      Start
-                    </button>
+                    <div className="campaign-actions">
+                      <button
+                        type="button"
+                        className="start-btn"
+                        onClick={() => startCampaign(campaign.id)}
+                      >
+                        <Play size={15} />
+                        {campaign.status === 'Running' ? 'Running' : 'Start'}
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn campaign-edit"
+                        onClick={() => openCampaignEditor(campaign)}
+                        aria-label={`Edit ${campaign.name}`}
+                        title="Edit campaign"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn campaign-delete"
+                        onClick={() => deleteCampaign(campaign)}
+                        aria-label={`Delete ${campaign.name}`}
+                        title="Delete campaign"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </section>
