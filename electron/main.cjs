@@ -340,18 +340,18 @@ async function renderHtmlAsset({
         12000
       )
       const renderScale = 2
-      const width = displayWidth * renderScale
-      const height = displayHeight * renderScale
+      const captureWidth = (displayLeft + displayWidth) * renderScale
+      const captureHeight = (displayTop + displayHeight) * renderScale
 
       renderWindow.webContents.setZoomFactor(renderScale)
-      renderWindow.setContentSize(width, height)
+      renderWindow.setContentSize(captureWidth, captureHeight)
       await wait(100)
 
       const screenshot = await renderWindow.webContents.capturePage({
-        x: displayLeft * renderScale,
-        y: displayTop * renderScale,
-        width,
-        height,
+        x: 0,
+        y: 0,
+        width: captureWidth,
+        height: captureHeight,
       })
       const outputScreenshot = trimToContent
         ? trimScreenshotToContent(screenshot, renderScale)
