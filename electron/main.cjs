@@ -157,6 +157,17 @@ async function renderHtmlAsset({ html, type }) {
             });
           })
         );
+
+        const resetBox = (element) => {
+          if (!element) return;
+          element.style.setProperty('margin', '0', 'important');
+          element.style.setProperty('padding', '0', 'important');
+        };
+
+        resetBox(document.documentElement);
+        resetBox(document.body);
+        resetBox(document.body?.firstElementChild);
+
         return true;
       })()
     `)
