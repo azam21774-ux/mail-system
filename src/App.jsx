@@ -268,18 +268,12 @@ function App() {
               </div>
             </div>
 
-            <label>Campaign Name</label>
+            <label className="field-label">Campaign Name</label>
             <input
+              className="text-input"
               value={campaignName}
               onChange={(e) => setCampaignName(e.target.value)}
               placeholder="e.g. September Newsletter"
-            />
-
-            <label>Subject</label>
-            <input
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              placeholder="Enter email subject"
             />
           </div>
 
@@ -291,26 +285,50 @@ function App() {
               </div>
             </div>
 
-            <label className="upload-box">
-              <Upload size={24} />
-              <strong>
-                {csvFile ? csvFile.name : 'Upload CSV'}
-              </strong>
-              <span>
-                {csvFile
-                  ? `${recipientCount} recipient${recipientCount === 1 ? '' : 's'} detected`
-                  : 'Click to choose a .csv file'}
-              </span>
+            {csvFile ? (
+              <div className="selected-file">
+                <div className="file-icon">
+                  <Upload size={18} />
+                </div>
+                <div className="file-info">
+                  <strong>{csvFile.name}</strong>
+                  <span>
+                    {recipientCount} recipient
+                    {recipientCount === 1 ? '' : 's'} detected
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="remove-file"
+                  onClick={() => {
+                    setCsvFile(null)
+                    setCsvHeaders([])
+                    setRecipientCount(0)
+                  }}
+                >
+                  <X size={14} />
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <label className="upload-box">
+                <Upload size={24} />
+                <strong>Upload CSV</strong>
+                <span>Click to choose a .csv file</span>
 
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) parseCSV(file)
-                }}
-              />
-            </label>
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onClick={(e) => {
+                    e.currentTarget.value = ''
+                  }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) parseCSV(file)
+                  }}
+                />
+              </label>
+            )}
 
             {csvHeaders.length > 0 && (
               <div className="csv-tags">
@@ -336,35 +354,63 @@ function App() {
               </div>
             </div>
 
-            <label className="upload-box compact">
-              <Paperclip size={23} />
-              <strong>
-                {attachment ? attachment.name : 'Upload Attachment'}
-              </strong>
-              <span>
-                {attachment
-                  ? `${(attachment.size / 1024 / 1024).toFixed(2)} MB`
-                  : 'PDF, DOCX, XLSX, ZIP, images and other files'}
-              </span>
-
-              <input
-                type="file"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) setAttachment(file)
-                }}
-              />
-            </label>
-
             {attachment && (
-              <button
-                className="remove-file"
-                onClick={() => setAttachment(null)}
-              >
-                <X size={14} />
-                Remove attachment
-              </button>
+              <div className="selected-file">
+                <div className="file-icon">
+                  <Paperclip size={18} />
+                </div>
+                <div className="file-info">
+                  <strong>{attachment.name}</strong>
+                  <span>
+                    {(attachment.size / 1024 / 1024).toFixed(2)} MB
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="remove-file"
+                  onClick={() => setAttachment(null)}
+                >
+                  <X size={14} />
+                  Remove
+                </button>
+              </div>
             )}
+
+            {!attachment && (
+              <label className="upload-box compact">
+                <Paperclip size={23} />
+                <strong>Upload Attachment</strong>
+                <span>PDF, DOCX, XLSX, ZIP, images and other files</span>
+
+                <input
+                  type="file"
+                  onClick={(e) => {
+                    e.currentTarget.value = ''
+                  }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) setAttachment(file)
+                  }}
+                />
+              </label>
+            )}
+          </div>
+
+          <div className="form-card">
+            <div className="form-card-header">
+              <div>
+                <h3>Subject</h3>
+                <p>Write the subject your recipients will see.</p>
+              </div>
+            </div>
+
+            <label className="field-label">Email Subject</label>
+            <input
+              className="text-input"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Enter email subject"
+            />
           </div>
 
           <div className="form-card">
@@ -375,6 +421,7 @@ function App() {
               </div>
 
               <button
+                type="button"
                 className={`mode-btn ${htmlMode ? 'active' : ''}`}
                 onClick={() => setHtmlMode((value) => !value)}
               >
@@ -427,13 +474,14 @@ function App() {
 
           <div className="campaign-footer">
             <button
+              type="button"
               className="secondary-btn"
               onClick={() => setShowCreateCampaign(false)}
             >
               Cancel
             </button>
 
-            <button className="primary-btn" onClick={saveCampaign}>
+            <button type="button" className="primary-btn" onClick={saveCampaign}>
               <Save size={17} />
               Save Campaign
             </button>
