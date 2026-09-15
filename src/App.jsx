@@ -113,6 +113,8 @@ function App() {
 
   const [showAdd, setShowAdd] = useState(false)
   const [profileName, setProfileName] = useState('')
+  const [editingProfileId, setEditingProfileId] = useState(null)
+  const [openProfileMenuId, setOpenProfileMenuId] = useState(null)
 
   const [campaigns, setCampaigns] = useState([])
   const [showCreateCampaign, setShowCreateCampaign] = useState(false)
@@ -143,6 +145,18 @@ function App() {
     const name = profileName.trim()
     if (!name) return
 
+    if (editingProfileId !== null) {
+      setProfiles((prev) =>
+        prev.map((profile) =>
+          profile.id === editingProfileId ? { ...profile, name } : profile
+        )
+      )
+      setProfileName('')
+      setEditingProfileId(null)
+      setShowAdd(false)
+      return
+    }
+
     setProfiles((prev) => [
       ...prev,
       {
@@ -158,6 +172,72 @@ function App() {
     setProfileName('')
     setShowAdd(false)
   }
+
+  const openAddProfile = () => {
+    setEditingProfileId(null)
+    setProfileName('')
+    setShowAdd(true)
+  }
+
+  const openRenameProfile = (profile) => {
+    setEditingProfileId(profile.id)
+    setProfileName(profile.name)
+    setOpenProfileMenuId(null)
+    setShowAdd(true)
+  }
+
+  const deleteProfile = (profile) => {
+    const confirmed = window.confirm(
+      `Delete "${profile.name}"? Assigned campaigns will be unassigned.`
+    )
+
+    if (!confirmed) return
+
+    setProfiles((prev) => prev.filter((item) => item.id !== profile.id))
+    setCampaigns((prev) =>
+      prev.map((campaign) => {
+        const profileIds = (
+          campaign.profileIds?.length
+            ? campaign.profileIds
+            : campaign.profileId
+              ? [campaign.profileId]
+              : []
+        ).filter((id) => id !== profile.id)
+
+        return {
+          ...campaign,
+          profileIds,
+          profileId: profileIds[0] || null,
+          profileName: profileIds
+            .map((id) => profiles.find((item) => item.id === id)?.name)
+            .filter(Boolean)
+            .join(', ') || null,
+        }
+      })
+    )
+    setOpenProfileMenuId(null)
+  }
+
+  useEffect(() => {
+    if (openProfileMenuId === null) return undefined
+
+    const closeMenu = (event) => {
+      if (!event.target.closest('.profile-menu-wrap')) {
+        setOpenProfileMenuId(null)
+      }
+    }
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setOpenProfileMenuId(null)
+    }
+
+    document.addEventListener('mousedown', closeMenu)
+    document.addEventListener('keydown', closeOnEscape)
+
+    return () => {
+      document.removeEventListener('mousedown', closeMenu)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [openProfileMenuId])
 
   const startCampaignsForProfile = (profileId) => {
     setCampaigns((prev) =>
