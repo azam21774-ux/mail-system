@@ -150,8 +150,8 @@ async function waitForAttachmentUpload(page) {
 async function clickGmailSend(page) {
   const sendSelectors = [
     'div.dC > div[role="button"].aoO[data-tooltip^="Send"]',
+    'div[role="button"].aoO[data-tooltip^="Send"]',
     'div[role="button"][data-tooltip^="Send"]',
-    'div[role="button"][aria-label^="Send"]',
     'div[role="button"][aria-label^="Send"]',
     'button[aria-label*="Send" i]',
     '[aria-label^="Send"]',
@@ -162,30 +162,37 @@ async function clickGmailSend(page) {
 
   const selector = sendSelectors.join(', ')
 
-  return page.evaluate((sendSelector) => {
-    const visible = (element) => {
-      const style = window.getComputedStyle(element)
-      const rect = element.getBoundingClientRect()
-      return (
-        style.display !== 'none' &&
-        style.visibility !== 'hidden' &&
-        rect.width > 0 &&
-        rect.height > 0
-      )
+  const candidates = await page.$$(selector)
+
+  for (const button of candidates) {
+    const ready = await button
+      .evaluate((element) => {
+        const style = window.getComputedStyle(element)
+        const rect = element.getBoundingClientRect()
+        return (
+          style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          rect.width > 0 &&
+          rect.height > 0 &&
+          element.getAttribute('aria-disabled') !== 'true' &&
+          !element.disabled
+        )
+      })
+      .catch(() => false)
+
+    if (!ready) continue
+
+    try {
+      // Use Puppeteer's real mouse interaction instead of HTMLElement.click().
+      // Gmail's toolbar listens for the browser mouse event sequence.
+      await button.click()
+      return true
+    } catch {
+      // Try the next visible Send candidate if Gmail replaced this node.
     }
+  }
 
-    const button = Array.from(document.querySelectorAll(sendSelector)).find(
-      (element) =>
-        visible(element) &&
-        element.getAttribute('aria-disabled') !== 'true' &&
-        !element.disabled
-    )
-
-    if (!button) return false
-    button.scrollIntoView({ block: 'center', inline: 'center' })
-    button.click()
-    return true
-  }, selector)
+  return false
 }
 
 async function pressMacSendShortcut(page) {
