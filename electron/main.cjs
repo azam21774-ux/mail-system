@@ -162,36 +162,7 @@ async function clickGmailSend(page) {
 
   const selector = sendSelectors.join(', ')
 
-  const sendReady = await page
-    .waitForFunction(
-      (sendSelector) => {
-        const visible = (element) => {
-          const style = window.getComputedStyle(element)
-          const rect = element.getBoundingClientRect()
-          return (
-            style.display !== 'none' &&
-            style.visibility !== 'hidden' &&
-            rect.width > 0 &&
-            rect.height > 0
-          )
-        }
-
-        return Array.from(document.querySelectorAll(sendSelector)).some(
-          (element) =>
-            visible(element) &&
-            element.getAttribute('aria-disabled') !== 'true' &&
-            !element.disabled
-        )
-      },
-      { timeout: 12000 },
-      selector
-    )
-    .then(() => true)
-    .catch(() => false)
-
-  if (!sendReady) return false
-
-  await page.evaluate((sendSelector) => {
+  return page.evaluate((sendSelector) => {
     const visible = (element) => {
       const style = window.getComputedStyle(element)
       const rect = element.getBoundingClientRect()
@@ -210,12 +181,11 @@ async function clickGmailSend(page) {
         !element.disabled
     )
 
-    if (!button) return
+    if (!button) return false
     button.scrollIntoView({ block: 'center', inline: 'center' })
     button.click()
+    return true
   }, selector)
-
-  return true
 }
 
 async function pressMacSendShortcut(page) {
