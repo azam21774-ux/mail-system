@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   LayoutDashboard,
   Users,
@@ -24,6 +24,78 @@ import {
   Clock3,
 } from 'lucide-react'
 import './App.css'
+
+function parseCsvLine(line) {
+  const values = []
+  let value = ''
+  let quoted = false
+
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index]
+    const nextCharacter = line[index + 1]
+
+    if (character === '"' && quoted && nextCharacter === '"') {
+      value += '"'
+      index += 1
+    } else if (character === '"') {
+      quoted = !quoted
+    } else if (character === ',' && !quoted) {
+      values.push(value.trim())
+      value = ''
+    } else {
+      value += character
+    }
+  }
+
+  values.push(value.trim())
+  return values
+}
+
+function parseCsvText(text) {
+  const rows = []
+  let row = []
+  let value = ''
+  let quoted = false
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]
+    const nextCharacter = text[index + 1]
+
+    if (character === '"' && quoted && nextCharacter === '"') {
+      value += '"'
+      index += 1
+    } else if (character === '"') {
+      quoted = !quoted
+    } else if (character === ',' && !quoted) {
+      row.push(value.trim())
+      value = ''
+    } else if ((character === '\n' || character === '\r') && !quoted) {
+      if (character === '\r' && nextCharacter === '\n') index += 1
+      row.push(value.trim())
+      if (row.some((cell) => cell.length > 0)) rows.push(row)
+      row = []
+      value = ''
+    } else {
+      value += character
+    }
+  }
+
+  row.push(value.trim())
+  if (row.some((cell) => cell.length > 0)) rows.push(row)
+
+  if (!rows.length) return { headers: [], data: [] }
+
+  const headers = rows[0].map((header) =>
+    header.replace(/^["']|["']$/g, '').trim()
+  )
+  const data = rows.slice(1).map((cells) =>
+    Object.fromEntries(
+      headers.map((header, index) => [header, cells[index] || ''])
+    )
+  )
+
+  return { headers, data }
+}
 
 function App() {
   const [active, setActive] = useState('Dashboard')
@@ -55,7 +127,9 @@ function App() {
   const [attachment, setAttachment] = useState(null)
   const [recipientCount, setRecipientCount] = useState(0)
   const [csvHeaders, setCsvHeaders] = useState([])
+  const [csvRows, setCsvRows] = useState([])
   const [delaySeconds, setDelaySeconds] = useState(0)
+  const activeCampaignRuns = useRef(new Set())
 
   const menu = [
     { name: 'Dashboard', icon: LayoutDashboard },
