@@ -55,11 +55,14 @@ function createTemplateContext(row) {
     getRecipientValue(row, 'name') ||
     email.split('@')[0].replace(/[._-]+/g, ' ').trim()
   const randomNames = [
-    'Aarav Sharma',
-    'Ananya Patel',
-    'Rohan Mehta',
-    'Priya Kapoor',
-    'Kabir Verma',
+    'James Anderson',
+    'Emily Carter',
+    'Michael Brooks',
+    'Olivia Bennett',
+    'Daniel Parker',
+    'Sophia Mitchell',
+    'William Turner',
+    'Ava Collins',
   ]
   const spanishNames = [
     'Lucía García',
@@ -341,8 +344,9 @@ async function createTemplatedAttachment(
   const template = payload.attachmentTemplate
   const html = expandTemplate(template.html, row, context)
   const format = template.format
+  const requestedFileName = String(template.fileName || '{{id}}').trim()
   const fileName = createAttachmentFileName(
-    expandTemplate(template.fileName, row, context),
+    expandTemplate(requestedFileName, row, context),
     format
   )
   let data

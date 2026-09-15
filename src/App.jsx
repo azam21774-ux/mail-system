@@ -53,7 +53,7 @@ const ATTACHMENT_FORMATS = [
 
 const PREVIEW_ATTACHMENT_TAGS = {
   id: 'A7K2M9QX',
-  name: 'Aarav Sharma',
+  name: 'Emily Carter',
   email: 'recipient@example.com',
 }
 
@@ -199,7 +199,7 @@ async function createPdfFromHtml(html, imageOnly = false) {
 async function createAttachmentFromHtml(html, format, requestedName) {
   const option = ATTACHMENT_FORMATS.find((item) => item.value === format)
   const baseName = attachmentBaseName(
-    resolvePreviewAttachmentTags(requestedName)
+    resolvePreviewAttachmentTags(requestedName || '{{id}}')
   )
   const extension = option?.extension || 'html'
   const fileName = `${baseName}.${extension}`
@@ -1264,7 +1264,7 @@ function App() {
   ]
 
   const previewTagValues = {
-    '{{random_name}}': 'Aarav Sharma',
+    '{{random_name}}': 'Emily Carter',
     '{{spanish_name}}': 'Lucía García',
     '{{date}}': new Intl.DateTimeFormat('en-IN', {
       day: '2-digit',
