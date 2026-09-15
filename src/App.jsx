@@ -276,8 +276,8 @@ async function createAttachmentFromHtml(html, format, requestedName) {
     const converted = await window.electronAPI?.createXlsxFromImage?.({
       name: fileName,
       data: await renderedImage.blob.arrayBuffer(),
-      width: renderedImage.width,
-      height: renderedImage.height,
+      width: renderedImage.displayWidth || renderedImage.width,
+      height: renderedImage.displayHeight || renderedImage.height,
     })
 
     if (!converted?.success) {

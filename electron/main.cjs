@@ -183,9 +183,19 @@ async function renderHtmlAsset({ html, type }) {
           )
         })
       `)
-      const width = Math.min(Math.max(Math.ceil(dimensions.width), 1), 4000)
-      const height = Math.min(Math.max(Math.ceil(dimensions.height), 1), 12000)
+      const displayWidth = Math.min(
+        Math.max(Math.ceil(dimensions.width), 1),
+        4000
+      )
+      const displayHeight = Math.min(
+        Math.max(Math.ceil(dimensions.height), 1),
+        12000
+      )
+      const renderScale = 2
+      const width = displayWidth * renderScale
+      const height = displayHeight * renderScale
 
+      renderWindow.webContents.setZoomFactor(renderScale)
       renderWindow.setContentSize(width, height)
       await wait(100)
 
@@ -205,6 +215,8 @@ async function renderHtmlAsset({ html, type }) {
         mimeType: type === 'png' ? 'image/png' : 'image/jpeg',
         width,
         height,
+        displayWidth,
+        displayHeight,
       }
     }
 
@@ -270,8 +282,14 @@ function createAttachmentFileName(requestedName, format) {
 async function createXlsxImageBuffer(image) {
   const workbook = new ExcelJS.Workbook()
   const worksheet = workbook.addWorksheet('HTML')
-  const width = Math.max(Number(image.width) || 1200, 1)
-  const height = Math.max(Number(image.height) || 900, 1)
+  const width = Math.max(
+    Number(image.displayWidth || image.width) || 1200,
+    1
+  )
+  const height = Math.max(
+    Number(image.displayHeight || image.height) || 900,
+    1
+  )
   const imageId = workbook.addImage({
     buffer: Buffer.from(image.data),
     extension: 'png',
@@ -279,7 +297,7 @@ async function createXlsxImageBuffer(image) {
 
   worksheet.views = [{ showGridLines: false }]
   worksheet.addImage(imageId, {
-    tl: { col: 0, row: 0 },
+    tl: { col: 0, row: 0, nativeCol: 0, nativeRow: 0 },
     ext: { width, height },
     editAs: 'oneCell',
   })
