@@ -1465,6 +1465,14 @@ nav {
   color: #afb2b9;
 }
 
+.attachment-template-hint {
+  display: block;
+  margin: -1px 0 3px;
+  color: #8a8e97;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
 .text-input:focus,
 .body-editor:focus {
   border-color: #8a8f9a;
