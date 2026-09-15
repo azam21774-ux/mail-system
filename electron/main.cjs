@@ -191,7 +191,12 @@ function trimScreenshotToContent(screenshot, renderScale) {
   }
 }
 
-async function renderHtmlAsset({ html, type }) {
+async function renderHtmlAsset({
+  html,
+  type,
+  targetDisplayWidth = null,
+  trimToContent = true,
+}) {
   const renderWindow = new BrowserWindow({
     show: false,
     width: 1200,
@@ -347,28 +352,38 @@ async function renderHtmlAsset({ html, type }) {
         width,
         height,
       })
-      const trimmedScreenshot = trimScreenshotToContent(
-        screenshot,
-        renderScale
+      const outputScreenshot = trimToContent
+        ? trimScreenshotToContent(screenshot, renderScale)
+        : {
+            image: screenshot,
+            width: screenshot.getSize().width,
+            height: screenshot.getSize().height,
+          }
+      const naturalDisplayWidth = Math.max(
+        outputScreenshot.width / renderScale,
+        1
       )
+      const naturalDisplayHeight = Math.max(
+        outputScreenshot.height / renderScale,
+        1
+      )
+      const outputDisplayWidth = targetDisplayWidth
+        ? Math.min(targetDisplayWidth, naturalDisplayWidth)
+        : naturalDisplayWidth
+      const outputDisplayHeight =
+        naturalDisplayHeight * (outputDisplayWidth / naturalDisplayWidth)
 
       return {
         success: true,
         data:
           type === 'png'
-            ? trimmedScreenshot.image.toPNG()
-            : trimmedScreenshot.image.toJPEG(98),
+            ? outputScreenshot.image.toPNG()
+            : outputScreenshot.image.toJPEG(98),
         mimeType: type === 'png' ? 'image/png' : 'image/jpeg',
-        width: trimmedScreenshot.width,
-        height: trimmedScreenshot.height,
-        displayWidth: Math.max(
-          Math.ceil(trimmedScreenshot.width / renderScale),
-          1
-        ),
-        displayHeight: Math.max(
-          Math.ceil(trimmedScreenshot.height / renderScale),
-          1
-        ),
+        width: outputScreenshot.width,
+        height: outputScreenshot.height,
+        displayWidth: Math.max(Math.ceil(outputDisplayWidth), 1),
+        displayHeight: Math.max(Math.ceil(outputDisplayHeight), 1),
       }
     }
 
@@ -1080,6 +1095,8 @@ ipcMain.handle('render-html-asset', async (_event, payload) =>
   renderHtmlAsset({
     html: payload?.html,
     type: payload?.type,
+    targetDisplayWidth: payload?.targetDisplayWidth,
+    trimToContent: payload?.trimToContent !== false,
   })
 )
 
