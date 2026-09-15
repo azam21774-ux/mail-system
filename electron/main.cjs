@@ -95,6 +95,128 @@ function looksLikeHtml(value) {
   return /<\s*\/?\s*[a-z][^>]*>/i.test(String(value || ''))
 }
 
+function createStandaloneHtml(source) {
+  const html = String(source || '').trim()
+
+  if (/<html[\s>]/i.test(html)) {
+    return html
+  }
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+  </head>
+  <body>${html}</body>
+</html>`
+}
+
+async function renderHtmlAsset({ html, type }) {
+  const renderWindow = new BrowserWindow({
+    show: false,
+    width: 1200,
+    height: 900,
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: true,
+    },
+  })
+
+  try {
+    await renderWindow.loadURL(
+      `data:text/html;charset=UTF-8,${encodeURIComponent(
+        createStandaloneHtml(html)
+      )}`
+    )
+
+    await renderWindow.webContents.executeJavaScript(`
+      (async () => {
+        if (document.fonts?.ready) await document.fonts.ready;
+        await Promise.all(
+          Array.from(document.images).map((image) => {
+            if (image.complete) return Promise.resolve();
+            return new Promise((resolve) => {
+              image.addEventListener('load', resolve, { once: true });
+              image.addEventListener('error', resolve, { once: true });
+            });
+          })
+        );
+        return true;
+      })()
+    `)
+
+    if (type === 'pdf') {
+      return {
+        success: true,
+        data: await renderWindow.webContents.printToPDF({
+          printBackground: true,
+          preferCSSPageSize: true,
+          pageSize: 'A4',
+          margins: {
+            marginType: 'custom',
+            top: 0,
+            bottom: 0,
+            left: 0,
+            right: 0,
+          },
+        }),
+        mimeType: 'application/pdf',
+      }
+    }
+
+    if (type === 'png' || type === 'jpeg') {
+      const dimensions = await renderWindow.webContents.executeJavaScript(`
+        ({
+          width: Math.max(
+            document.documentElement.scrollWidth,
+            document.body.scrollWidth,
+            1
+          ),
+          height: Math.max(
+            document.documentElement.scrollHeight,
+            document.body.scrollHeight,
+            1
+          )
+        })
+      `)
+      const width = Math.min(Math.max(Math.ceil(dimensions.width), 1), 4000)
+      const height = Math.min(Math.max(Math.ceil(dimensions.height), 1), 12000)
+
+      renderWindow.setContentSize(width, height)
+      await wait(100)
+
+      const screenshot = await renderWindow.webContents.capturePage({
+        x: 0,
+        y: 0,
+        width,
+        height,
+      })
+
+      return {
+        success: true,
+        data:
+          type === 'png'
+            ? screenshot.toPNG()
+            : screenshot.toJPEG(92),
+        mimeType: type === 'png' ? 'image/png' : 'image/jpeg',
+      }
+    }
+
+    return {
+      success: false,
+      error: `Unsupported HTML render type: ${type}`,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || 'Could not render the HTML attachment.',
+    }
+  } finally {
+    if (!renderWindow.isDestroyed()) renderWindow.destroy()
+  }
+}
+
 async function connectToGmail(port) {
   const response = await fetch(`http://127.0.0.1:${port}/json/version`)
 
@@ -554,6 +676,13 @@ ipcMain.handle('stop-campaign', async (_event, campaignId) => {
   job.cancelled = true
   return { success: true }
 })
+
+ipcMain.handle('render-html-asset', async (_event, payload) =>
+  renderHtmlAsset({
+    html: payload?.html,
+    type: payload?.type,
+  })
+)
 
 ipcMain.handle('convert-png-to-heic', async (_event, payload) => {
   if (process.platform !== 'darwin') {

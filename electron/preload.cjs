@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopCampaign: (campaignId) =>
     ipcRenderer.invoke('stop-campaign', campaignId),
 
+  renderHtmlAsset: (payload) =>
+    ipcRenderer.invoke('render-html-asset', payload),
+
   convertPngToHeic: (payload) =>
     ipcRenderer.invoke('convert-png-to-heic', payload),
 

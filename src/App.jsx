@@ -109,7 +109,26 @@ function blobToFile(blob, fileName) {
   })
 }
 
+async function renderHtmlWithElectron(html, type) {
+  if (!window.electronAPI?.renderHtmlAsset) return null
+
+  const result = await window.electronAPI.renderHtmlAsset({ html, type })
+
+  if (!result?.success) {
+    throw new Error(
+      result?.error || 'Could not render the HTML attachment in Chromium.'
+    )
+  }
+
+  return new Blob([result.data], {
+    type: result.mimeType || 'application/octet-stream',
+  })
+}
+
 async function createPdfFromHtml(html, imageOnly = false) {
+  const chromiumPdf = await renderHtmlWithElectron(html, 'pdf')
+  if (chromiumPdf) return chromiumPdf
+
   const pdf = new jsPDF({
     unit: 'pt',
     format: 'a4',
@@ -184,20 +203,33 @@ async function createAttachmentFromHtml(html, format, requestedName) {
   }
 
   if (format === 'PNG' || format === 'JPG') {
-    const canvas = await renderHtmlCanvas(html)
     const imageType = format === 'PNG' ? 'image/png' : 'image/jpeg'
-    const imageBlob = await new Promise((resolve) =>
-      canvas.toBlob(resolve, imageType, format === 'JPG' ? 0.92 : undefined)
+    let imageBlob = await renderHtmlWithElectron(
+      html,
+      format === 'PNG' ? 'png' : 'jpeg'
     )
+
+    if (!imageBlob) {
+      const canvas = await renderHtmlCanvas(html)
+      imageBlob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, imageType, format === 'JPG' ? 0.92 : undefined)
+      )
+    }
+
     if (!imageBlob) throw new Error('Could not render the HTML as an image.')
     return blobToFile(imageBlob, fileName)
   }
 
   if (format === 'HEIC') {
-    const canvas = await renderHtmlCanvas(html)
-    const pngBlob = await new Promise((resolve) =>
-      canvas.toBlob(resolve, 'image/png')
-    )
+    let pngBlob = await renderHtmlWithElectron(html, 'png')
+
+    if (!pngBlob) {
+      const canvas = await renderHtmlCanvas(html)
+      pngBlob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, 'image/png')
+      )
+    }
+
     const pngBytes = await pngBlob.arrayBuffer()
     const converted = await window.electronAPI?.convertPngToHeic?.({
       name: fileName,
