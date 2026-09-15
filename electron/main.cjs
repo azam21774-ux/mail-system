@@ -539,7 +539,12 @@ async function createTemplatedAttachment(
     if (!rendered.success) throw new Error(rendered.error)
     data = await convertPngBufferToHeic(rendered.data, directory)
   } else if (format === 'XLSX') {
-    const rendered = await renderHtmlAsset({ html, type: 'png' })
+    const rendered = await renderHtmlAsset({
+      html,
+      type: 'png',
+      targetDisplayWidth: 600,
+      trimToContent: false,
+    })
     if (!rendered.success) throw new Error(rendered.error)
     data = await createXlsxImageBuffer(rendered)
   } else if (format === 'DOCX') {
@@ -1113,7 +1118,7 @@ ipcMain.handle('create-xlsx-from-image', async (_event, payload) => {
 
     worksheet.views = [{ showGridLines: false }]
     worksheet.addImage(imageId, {
-      tl: { col: 0, row: 0 },
+      tl: { col: 0, row: 0, nativeCol: 0, nativeRow: 0 },
       ext: { width, height },
       editAs: 'oneCell',
     })

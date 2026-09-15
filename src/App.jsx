@@ -120,10 +120,14 @@ function blobToFile(blob, fileName) {
   })
 }
 
-async function renderHtmlWithElectron(html, type) {
+async function renderHtmlWithElectron(html, type, options = {}) {
   if (!window.electronAPI?.renderHtmlAsset) return null
 
-  const result = await window.electronAPI.renderHtmlAsset({ html, type })
+  const result = await window.electronAPI.renderHtmlAsset({
+    html,
+    type,
+    ...options,
+  })
 
   if (!result?.success) {
     throw new Error(
@@ -283,7 +287,10 @@ async function createAttachmentFromHtml(html, format, requestedName) {
   }
 
   if (format === 'XLSX') {
-    const renderedImage = await renderHtmlWithElectron(html, 'png')
+    const renderedImage = await renderHtmlWithElectron(html, 'png', {
+      targetDisplayWidth: 600,
+      trimToContent: false,
+    })
     if (!renderedImage) {
       throw new Error(
         'XLSX image attachments must be generated from the Electron app.'
