@@ -360,11 +360,32 @@ async function renderHtmlAsset({
       )
       const renderScale = 2
       const captureWidth = (displayLeft + displayWidth) * renderScale
-      const captureHeight = (displayTop + displayHeight) * renderScale
+      let captureHeight = (displayTop + displayHeight) * renderScale
 
       renderWindow.webContents.setZoomFactor(renderScale)
       renderWindow.setContentSize(captureWidth, captureHeight)
       await wait(100)
+
+      const finalContentHeight = await renderWindow.webContents.executeJavaScript(`
+        Math.max(
+          document.documentElement?.scrollHeight || 0,
+          document.body?.scrollHeight || 0,
+          document.body?.firstElementChild?.scrollHeight || 0,
+          1
+        )
+      `)
+      const zoomedDisplayHeight = Math.min(
+        Math.max(Math.ceil(Number(finalContentHeight) || 0), displayHeight),
+        12000
+      )
+      captureHeight = Math.max(
+        captureHeight,
+        (displayTop + zoomedDisplayHeight) * renderScale
+      )
+      if (captureHeight !== (displayTop + displayHeight) * renderScale) {
+        renderWindow.setContentSize(captureWidth, captureHeight)
+        await wait(100)
+      }
 
       const screenshot = await renderWindow.webContents.capturePage({
         x: 0,
@@ -377,7 +398,7 @@ async function renderHtmlAsset({
             left: displayLeft,
             top: displayTop,
             width: displayWidth,
-            height: displayHeight,
+            height: zoomedDisplayHeight,
           }, renderScale)
         : {
             image: screenshot,
