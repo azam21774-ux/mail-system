@@ -131,14 +131,27 @@ async function sendOneEmail(page, payload, row, attachmentPath) {
   await composeButton.click()
 
   if (attachmentPath) {
-    // Do not click Gmail's paperclip button here. On macOS that opens a
-    // native file picker, which Puppeteer cannot control and which can leave
-    // the dialog open while the rest of the compose flow continues.
-    // Gmail keeps the file input in the page, so upload directly into it.
-    const fileInput = await page.waitForSelector('input[type="file"]', {
-      timeout: 15000,
-    })
-    await fileInput.uploadFile(attachmentPath)
+    // Prefer the hidden input when Gmail has already rendered it. If Gmail
+    // only creates it after the paperclip click, intercept the native chooser
+    // before clicking so macOS never shows a blocking file-picker window.
+    const fileInput = await page
+      .waitForSelector('input[type="file"]', { timeout: 3000 })
+      .catch(() => null)
+
+    if (fileInput) {
+      await fileInput.uploadFile(attachmentPath)
+    } else {
+      const attachmentButton = await page.waitForSelector(
+        '[command="Files"], [aria-label*="Attach"], .a1.aaA.aMZ',
+        { visible: true, timeout: 15000 }
+      )
+      const [fileChooser] = await Promise.all([
+        page.waitForFileChooser(),
+        attachmentButton.click(),
+      ])
+      await fileChooser.accept([attachmentPath])
+    }
+
     await wait(500)
   }
 
@@ -173,11 +186,29 @@ async function sendOneEmail(page, payload, row, attachmentPath) {
   }
 
   const sendButton = await page.waitForSelector(
-    '[aria-label^="Send"], [data-tooltip^="Send"], [command="send"]',
+    'div[role="button"][aria-label^="Send"], [aria-label^="Send"], [data-tooltip^="Send"], [command="send"]',
     { visible: true, timeout: 15000 }
   )
-  await sendButton.click()
-  await wait(600)
+  await sendButton.evaluate((element) => {
+    element.scrollIntoView({ block: 'center', inline: 'center' })
+    element.click()
+  })
+
+  const composeClosed = await page
+    .waitForSelector('input[name="subjectbox"]', {
+      hidden: true,
+      timeout: 3000,
+    })
+    .then(() => true)
+    .catch(() => false)
+
+  if (!composeClosed) {
+    // Gmail exposes this as ⌘Enter on macOS. It is a safe fallback if the
+    // toolbar click is swallowed by a transient compose overlay.
+    await page.keyboard.press('Meta+Enter')
+  }
+
+  await wait(800)
 }
 
 function createWindow() {
