@@ -64,6 +64,18 @@ function runCommand(command, args) {
 const wait = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds))
 
+function withTimeout(promise, milliseconds, message) {
+  let timeoutId
+
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), milliseconds)
+  })
+
+  return Promise.race([promise, timeout]).finally(() => {
+    clearTimeout(timeoutId)
+  })
+}
+
 const randomId = () => {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
   const bytes = crypto.randomBytes(10)
@@ -134,8 +146,19 @@ function looksLikeHtml(value) {
   return /<\s*\/?\s*[a-z][^>]*>/i.test(String(value || ''))
 }
 
+function sanitizeHtmlForRendering(source) {
+  return String(source || '')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, '')
+    .replace(
+      /\b(src|href)\s*=\s*(['"])chrome-extension:[^'"]*\2/gi,
+      '$1=$2$2'
+    )
+}
+
 function createStandaloneHtml(source) {
-  const html = String(source || '').trim()
+  const html = sanitizeHtmlForRendering(source).trim()
   const rendererResetStyle = `
     <style id="mail-system-render-reset">
       html, body {
@@ -261,39 +284,56 @@ async function renderHtmlAsset({
   })
 
   try {
-    await renderWindow.loadURL(
-      `data:text/html;charset=UTF-8,${encodeURIComponent(
-        createStandaloneHtml(html)
-      )}`
+    await withTimeout(
+      renderWindow.loadURL(
+        `data:text/html;charset=UTF-8,${encodeURIComponent(
+          createStandaloneHtml(html)
+        )}`
+      ),
+      15000,
+      'The HTML attachment took too long to load.'
     )
 
-    await renderWindow.webContents.executeJavaScript(`
-      (async () => {
-        if (document.fonts?.ready) await document.fonts.ready;
-        await Promise.all(
-          Array.from(document.images).map((image) => {
-            if (image.complete) return Promise.resolve();
-            return new Promise((resolve) => {
-              image.addEventListener('load', resolve, { once: true });
-              image.addEventListener('error', resolve, { once: true });
-            });
-          })
-        );
+    await withTimeout(
+      renderWindow.webContents.executeJavaScript(`
+        (async () => {
+          if (document.fonts?.ready) {
+            await Promise.race([
+              document.fonts.ready,
+              new Promise((resolve) => setTimeout(resolve, 5000)),
+            ]);
+          }
 
-        const resetBox = (element) => {
-          if (!element) return;
-          element.style.setProperty('margin', '0', 'important');
-          element.style.setProperty('padding', '0', 'important');
-          element.style.setProperty('background-color', '#ffffff', 'important');
-        };
+          await Promise.all(
+            Array.from(document.images).map((image) => {
+              if (image.complete) return Promise.resolve();
+              return Promise.race([
+                new Promise((resolve) => {
+                  image.addEventListener('load', resolve, { once: true });
+                  image.addEventListener('error', resolve, { once: true });
+                }),
+                new Promise((resolve) => setTimeout(resolve, 5000)),
+              ]);
+            })
+          );
 
-        resetBox(document.documentElement);
-        resetBox(document.body);
-        resetBox(document.body?.firstElementChild);
+          const resetBox = (element) => {
+            if (!element) return;
+            element.style.setProperty('margin', '0', 'important');
+            element.style.setProperty('padding', '0', 'important');
+            element.style.setProperty('background-color', '#ffffff', 'important');
+          };
 
-        return true;
-      })()
-    `)
+          resetBox(document.documentElement);
+          resetBox(document.body);
+          resetBox(document.body?.firstElementChild);
+
+          return true;
+        })()
+      `),
+      15000,
+      'The HTML attachment resources took too long to load.'
+    )
 
     if (type === 'pdf') {
       return {
@@ -315,8 +355,9 @@ async function renderHtmlAsset({
     }
 
     if (type === 'png' || type === 'jpeg') {
-      const dimensions = await renderWindow.webContents.executeJavaScript(`
-        (() => {
+      const dimensions = await withTimeout(
+        renderWindow.webContents.executeJavaScript(`
+          (() => {
           const contentRoots = Array.from(document.body?.children || []).filter(
             (element) => !['STYLE', 'SCRIPT', 'LINK'].includes(element.tagName)
           )
@@ -418,8 +459,11 @@ async function renderHtmlAsset({
             width: Math.max(right - left, 1),
             height: Math.max(bottom - top, 1),
           }
-        })()
-      `)
+          })()
+        `),
+        15000,
+        'The HTML attachment layout could not be calculated.'
+      )
       const displayLeft = Math.max(Math.floor(dimensions.left || 0), 0)
       const displayTop = Math.max(Math.floor(dimensions.top || 0), 0)
       const displayWidth = Math.min(
@@ -438,26 +482,31 @@ async function renderHtmlAsset({
       )
       await wait(100)
 
-      const finalContentHeight = await renderWindow.webContents.executeJavaScript(`
-        Math.max(
-          document.documentElement?.scrollHeight || 0,
-          document.body?.scrollHeight || 0,
-          document.body?.firstElementChild?.scrollHeight || 0,
-          1
-        )
-      `)
+      const finalContentHeight = await withTimeout(
+        renderWindow.webContents.executeJavaScript(`
+          Math.max(
+            document.documentElement?.scrollHeight || 0,
+            document.body?.scrollHeight || 0,
+            document.body?.firstElementChild?.scrollHeight || 0,
+            1
+          )
+        `),
+        15000,
+        'The HTML attachment height could not be calculated.'
+      )
       const finalDisplayHeight = Math.min(
         Math.max(Math.ceil(Number(finalContentHeight) || 0), displayHeight),
         12000
       )
-      const outputScreenshot = await captureHtmlScreenshot(
-        renderWindow.webContents,
-        {
+      const outputScreenshot = await withTimeout(
+        captureHtmlScreenshot(renderWindow.webContents, {
           width: displayWidth,
           height: trimToContent ? finalDisplayHeight : displayHeight,
           renderScale,
           type,
-        }
+        }),
+        30000,
+        'The HTML attachment screenshot timed out.'
       )
       const naturalDisplayWidth = Math.max(outputScreenshot.width / renderScale, 1)
       const naturalDisplayHeight = Math.max(
