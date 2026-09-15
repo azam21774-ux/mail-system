@@ -4,6 +4,7 @@ const crypto = require('crypto')
 const path = require('path')
 const fs = require('fs')
 const puppeteer = require('puppeteer-core')
+const ExcelJS = require('exceljs')
 
 const CHROME_PATH =
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
@@ -200,6 +201,8 @@ async function renderHtmlAsset({ html, type }) {
             ? screenshot.toPNG()
             : screenshot.toJPEG(92),
         mimeType: type === 'png' ? 'image/png' : 'image/jpeg',
+        width,
+        height,
       }
     }
 
@@ -683,6 +686,38 @@ ipcMain.handle('render-html-asset', async (_event, payload) =>
     type: payload?.type,
   })
 )
+
+ipcMain.handle('create-xlsx-from-image', async (_event, payload) => {
+  try {
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('HTML')
+    const width = Math.max(Number(payload?.width) || 1200, 1)
+    const height = Math.max(Number(payload?.height) || 900, 1)
+    const imageId = workbook.addImage({
+      buffer: Buffer.from(new Uint8Array(payload?.data || [])),
+      extension: 'png',
+    })
+
+    worksheet.views = [{ showGridLines: false }]
+    worksheet.addImage(imageId, {
+      tl: { col: 0, row: 0 },
+      ext: { width, height },
+      editAs: 'oneCell',
+    })
+
+    return {
+      success: true,
+      data: await workbook.xlsx.writeBuffer(),
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || 'Could not create the XLSX image attachment.',
+    }
+  }
+})
 
 ipcMain.handle('convert-png-to-heic', async (_event, payload) => {
   if (process.platform !== 'darwin') {

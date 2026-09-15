@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   renderHtmlAsset: (payload) =>
     ipcRenderer.invoke('render-html-asset', payload),
 
+  createXlsxFromImage: (payload) =>
+    ipcRenderer.invoke('create-xlsx-from-image', payload),
+
   convertPngToHeic: (payload) =>
     ipcRenderer.invoke('convert-png-to-heic', payload),
 

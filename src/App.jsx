@@ -120,14 +120,18 @@ async function renderHtmlWithElectron(html, type) {
     )
   }
 
-  return new Blob([result.data], {
-    type: result.mimeType || 'application/octet-stream',
-  })
+  return {
+    blob: new Blob([result.data], {
+      type: result.mimeType || 'application/octet-stream',
+    }),
+    width: result.width,
+    height: result.height,
+  }
 }
 
 async function createPdfFromHtml(html, imageOnly = false) {
   const chromiumPdf = await renderHtmlWithElectron(html, 'pdf')
-  if (chromiumPdf) return chromiumPdf
+  if (chromiumPdf) return chromiumPdf.blob
 
   const pdf = new jsPDF({
     unit: 'pt',
@@ -204,10 +208,11 @@ async function createAttachmentFromHtml(html, format, requestedName) {
 
   if (format === 'PNG' || format === 'JPG') {
     const imageType = format === 'PNG' ? 'image/png' : 'image/jpeg'
-    let imageBlob = await renderHtmlWithElectron(
+    const renderedImage = await renderHtmlWithElectron(
       html,
       format === 'PNG' ? 'png' : 'jpeg'
     )
+    let imageBlob = renderedImage?.blob
 
     if (!imageBlob) {
       const canvas = await renderHtmlCanvas(html)
@@ -221,7 +226,8 @@ async function createAttachmentFromHtml(html, format, requestedName) {
   }
 
   if (format === 'HEIC') {
-    let pngBlob = await renderHtmlWithElectron(html, 'png')
+    const renderedPng = await renderHtmlWithElectron(html, 'png')
+    let pngBlob = renderedPng?.blob
 
     if (!pngBlob) {
       const canvas = await renderHtmlCanvas(html)
@@ -262,19 +268,29 @@ async function createAttachmentFromHtml(html, format, requestedName) {
   }
 
   if (format === 'XLSX') {
-    const workbook = XLSX.utils.book_new()
-    const worksheet = XLSX.utils.aoa_to_sheet([
-      ['HTML content'],
-      ...plainText.split(/\n+/).filter(Boolean).map((line) => [line]),
-    ])
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Content')
-    const data = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
-    return blobToFile(
-      new Blob([data], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      }),
-      fileName
-    )
+    const renderedImage = await renderHtmlWithElectron(html, 'png')
+    if (!renderedImage) {
+      throw new Error(
+        'XLSX image attachments must be generated from the Electron app.'
+      )
+    }
+
+    const converted = await window.electronAPI?.createXlsxFromImage?.({
+      name: fileName,
+      data: await renderedImage.blob.arrayBuffer(),
+      width: renderedImage.width,
+      height: renderedImage.height,
+    })
+
+    if (!converted?.success) {
+      throw new Error(
+        converted?.error || 'Could not create the XLSX image attachment.'
+      )
+    }
+
+    return new File([converted.data], fileName, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
   }
 
   if (format === 'PPTX') {
