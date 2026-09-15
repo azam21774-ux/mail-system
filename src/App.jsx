@@ -496,7 +496,7 @@ function App() {
     '<h1>Hello {{name}}</h1><p>Your attached document is ready.</p>'
   )
   const [attachmentFormat, setAttachmentFormat] = useState('PDF')
-  const [attachmentFileName, setAttachmentFileName] = useState('attachment')
+  const [attachmentFileName, setAttachmentFileName] = useState('{{id}}')
   const [isGeneratingAttachment, setIsGeneratingAttachment] = useState(false)
   const [recipientCount, setRecipientCount] = useState(0)
   const [csvHeaders, setCsvHeaders] = useState([])
@@ -781,7 +781,7 @@ function App() {
             ? {
                 html: campaign.attachmentHtml,
                 format: campaign.attachmentFormat || 'PDF',
-                fileName: campaign.attachmentFileName || 'attachment',
+                fileName: campaign.attachmentFileName || '{{id}}',
               }
             : null,
       })
@@ -1056,7 +1056,7 @@ function App() {
       '<h1>Hello {{name}}</h1><p>Your attached document is ready.</p>'
     )
     setAttachmentFormat('PDF')
-    setAttachmentFileName('attachment')
+    setAttachmentFileName('{{id}}')
   }
 
   const openCampaignCreator = () => {
@@ -1095,7 +1095,7 @@ function App() {
         '<h1>Hello {{name}}</h1><p>Your attached document is ready.</p>'
     )
     setAttachmentFormat(campaign.attachmentFormat || 'PDF')
-    setAttachmentFileName(campaign.attachmentFileName || 'attachment')
+    setAttachmentFileName(campaign.attachmentFileName || '{{id}}')
     setRecipientCount(campaign.recipients)
     setCsvHeaders(campaign.csvHeaders || [])
     setCsvRows(campaign.recipientRows || [])
