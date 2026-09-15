@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   LayoutDashboard,
   Users,
@@ -21,6 +21,7 @@ import {
   Pencil,
   Trash2,
   CalendarDays,
+  Clock3,
 } from 'lucide-react'
 import './App.css'
 
@@ -46,6 +47,7 @@ function App() {
   const [editingCampaignId, setEditingCampaignId] = useState(null)
 
   const [campaignName, setCampaignName] = useState('')
+  const [selectedProfileId, setSelectedProfileId] = useState('')
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [htmlMode, setHtmlMode] = useState(false)
@@ -53,6 +55,7 @@ function App() {
   const [attachment, setAttachment] = useState(null)
   const [recipientCount, setRecipientCount] = useState(0)
   const [csvHeaders, setCsvHeaders] = useState([])
+  const [delaySeconds, setDelaySeconds] = useState(5)
 
   const menu = [
     { name: 'Dashboard', icon: LayoutDashboard },
@@ -150,6 +153,7 @@ function App() {
 
   const resetCampaignForm = () => {
     setCampaignName('')
+    setSelectedProfileId(String(profiles[0]?.id || ''))
     setSubject('')
     setBody('')
     setHtmlMode(false)
@@ -157,6 +161,7 @@ function App() {
     setAttachment(null)
     setRecipientCount(0)
     setCsvHeaders([])
+    setDelaySeconds(5)
   }
 
   const openCampaignCreator = () => {
@@ -167,6 +172,7 @@ function App() {
 
   const openCampaignEditor = (campaign) => {
     setCampaignName(campaign.name)
+    setSelectedProfileId(String(campaign.profileId || ''))
     setSubject(campaign.subject)
     setBody(campaign.body)
     setHtmlMode(campaign.htmlMode)
@@ -184,6 +190,7 @@ function App() {
     )
     setRecipientCount(campaign.recipients)
     setCsvHeaders(campaign.csvHeaders || [])
+    setDelaySeconds(campaign.delaySeconds || 5)
     setEditingCampaignId(campaign.id)
     setActive('Campaigns')
     setShowCreateCampaign(true)
