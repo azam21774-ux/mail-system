@@ -245,30 +245,34 @@ async function renderHtmlAsset({
     if (type === 'png' || type === 'jpeg') {
       const dimensions = await renderWindow.webContents.executeJavaScript(`
         (() => {
-          const contentCandidates = Array.from(document.body?.children || [])
-            .filter(
-              (element) => !['STYLE', 'SCRIPT', 'LINK'].includes(element.tagName)
-            )
-          const contentElements = contentCandidates
+          const contentRoots = Array.from(document.body?.children || []).filter(
+            (element) => !['STYLE', 'SCRIPT', 'LINK'].includes(element.tagName)
+          )
+          const contentElements = contentRoots
+            .flatMap((root) => [root, ...root.querySelectorAll('*')])
             .map((element) => {
               const rect = element.getBoundingClientRect()
+              const scrollWidth = Number(element.scrollWidth) || 0
+              const scrollHeight = Number(element.scrollHeight) || 0
               const width = Math.max(
                 rect.width,
-                Number(element.scrollWidth) || 0
+                scrollWidth
               )
               const height = Math.max(
                 rect.height,
-                Number(element.scrollHeight) || 0
+                scrollHeight
               )
 
               return {
                 left: rect.left,
                 top: rect.top,
-                right: rect.left + width,
-                bottom: rect.top + height,
+                right: Math.max(rect.right, rect.left + width),
+                bottom: Math.max(rect.bottom, rect.top + height),
               }
             })
-            .filter((rect) => rect.width > 0 && rect.height > 0)
+            .filter(
+              (rect) => rect.right > rect.left && rect.bottom > rect.top
+            )
 
           if (!contentElements.length) {
             return {
