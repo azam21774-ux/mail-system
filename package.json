@@ -9,8 +9,8 @@
     "dev": "node scripts/dev.mjs",
     "build": "vite build",
     "start": "electron .",
-    "package:win": "npm run build && electron-builder --win nsis",
-    "package:win:portable": "npm run build && electron-builder --win portable"
+    "package:win": "npm run build && electron-builder --win nsis --publish never",
+    "package:win:portable": "npm run build && electron-builder --win portable --publish never"
   },
   "dependencies": {
     "docx": "^9.7.1",
