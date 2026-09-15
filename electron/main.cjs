@@ -193,19 +193,54 @@ async function renderHtmlAsset({ html, type }) {
 
     if (type === 'png' || type === 'jpeg') {
       const dimensions = await renderWindow.webContents.executeJavaScript(`
-        ({
-          width: Math.max(
-            document.documentElement.scrollWidth,
-            document.body.scrollWidth,
-            1
-          ),
-          height: Math.max(
-            document.documentElement.scrollHeight,
-            document.body.scrollHeight,
-            1
+        (() => {
+          const contentElements = Array.from(document.body?.children || [])
+            .filter((element) => !['STYLE', 'SCRIPT', 'LINK'].includes(element.tagName))
+            .map((element) => element.getBoundingClientRect())
+            .filter((rect) => rect.width > 0 && rect.height > 0)
+
+          if (!contentElements.length) {
+            return {
+              left: 0,
+              top: 0,
+              width: Math.max(
+                document.documentElement.scrollWidth,
+                document.body.scrollWidth,
+                1
+              ),
+              height: Math.max(
+                document.documentElement.scrollHeight,
+                document.body.scrollHeight,
+                1
+              ),
+            }
+          }
+
+          const left = Math.max(
+            0,
+            Math.min(...contentElements.map((rect) => rect.left))
           )
-        })
+          const top = Math.max(
+            0,
+            Math.min(...contentElements.map((rect) => rect.top))
+          )
+          const right = Math.max(
+            ...contentElements.map((rect) => rect.right)
+          )
+          const bottom = Math.max(
+            ...contentElements.map((rect) => rect.bottom)
+          )
+
+          return {
+            left,
+            top,
+            width: Math.max(right - left, 1),
+            height: Math.max(bottom - top, 1),
+          }
+        })()
       `)
+      const displayLeft = Math.max(Math.floor(dimensions.left || 0), 0)
+      const displayTop = Math.max(Math.floor(dimensions.top || 0), 0)
       const displayWidth = Math.min(
         Math.max(Math.ceil(dimensions.width), 1),
         4000
@@ -223,8 +258,8 @@ async function renderHtmlAsset({ html, type }) {
       await wait(100)
 
       const screenshot = await renderWindow.webContents.capturePage({
-        x: 0,
-        y: 0,
+        x: displayLeft * renderScale,
+        y: displayTop * renderScale,
         width,
         height,
       })
