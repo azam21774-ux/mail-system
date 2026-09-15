@@ -258,9 +258,29 @@ async function renderHtmlAsset({ html, type }) {
     if (type === 'png' || type === 'jpeg') {
       const dimensions = await renderWindow.webContents.executeJavaScript(`
         (() => {
-          const contentElements = Array.from(document.body?.children || [])
-            .filter((element) => !['STYLE', 'SCRIPT', 'LINK'].includes(element.tagName))
-            .map((element) => element.getBoundingClientRect())
+          const contentCandidates = Array.from(document.body?.children || [])
+            .filter(
+              (element) => !['STYLE', 'SCRIPT', 'LINK'].includes(element.tagName)
+            )
+          const contentElements = contentCandidates
+            .map((element) => {
+              const rect = element.getBoundingClientRect()
+              const width = Math.max(
+                rect.width,
+                Number(element.scrollWidth) || 0
+              )
+              const height = Math.max(
+                rect.height,
+                Number(element.scrollHeight) || 0
+              )
+
+              return {
+                left: rect.left,
+                top: rect.top,
+                right: rect.left + width,
+                bottom: rect.top + height,
+              }
+            })
             .filter((rect) => rect.width > 0 && rect.height > 0)
 
           if (!contentElements.length) {
