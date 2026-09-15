@@ -248,19 +248,32 @@ async function renderHtmlAsset({
           const contentRoots = Array.from(document.body?.children || []).filter(
             (element) => !['STYLE', 'SCRIPT', 'LINK'].includes(element.tagName)
           )
-          const contentElements = contentRoots
-            .flatMap((root) => [root, ...root.querySelectorAll('*')])
+          const allElements = contentRoots.flatMap((root) => [
+            root,
+            ...root.querySelectorAll('*'),
+          ])
+
+          // HTML emails often place long lines or tables inside an overflow
+          // clipped wrapper. An attachment should preserve that content rather
+          // than silently cutting it at the wrapper's visual width.
+          for (const element of [
+            document.documentElement,
+            document.body,
+            ...allElements,
+          ]) {
+            element?.style.setProperty('overflow', 'visible', 'important')
+          }
+
+          const contentElements = allElements
             .map((element) => {
               const rect = element.getBoundingClientRect()
-              const scrollWidth = Number(element.scrollWidth) || 0
-              const scrollHeight = Number(element.scrollHeight) || 0
               const width = Math.max(
                 rect.width,
-                scrollWidth
+                Number(element.scrollWidth) || 0
               )
               const height = Math.max(
                 rect.height,
-                scrollHeight
+                Number(element.scrollHeight) || 0
               )
 
               return {
@@ -270,11 +283,36 @@ async function renderHtmlAsset({
                 bottom: Math.max(rect.bottom, rect.top + height),
               }
             })
-            .filter(
-              (rect) => rect.right > rect.left && rect.bottom > rect.top
-            )
+            .filter((rect) => rect.right > rect.left && rect.bottom > rect.top)
 
-          if (!contentElements.length) {
+          const textBounds = []
+          for (const root of contentRoots) {
+            const walker = document.createTreeWalker(
+              root,
+              NodeFilter.SHOW_TEXT
+            )
+            let node = walker.nextNode()
+            while (node) {
+              if (node.textContent?.trim()) {
+                const range = document.createRange()
+                range.selectNodeContents(node)
+                for (const rect of range.getClientRects()) {
+                  if (rect.width > 0 && rect.height > 0) {
+                    textBounds.push({
+                      left: rect.left,
+                      top: rect.top,
+                      right: rect.right,
+                      bottom: rect.bottom,
+                    })
+                  }
+                }
+              }
+              node = walker.nextNode()
+            }
+          }
+
+          const bounds = [...contentElements, ...textBounds]
+          if (!bounds.length) {
             return {
               left: 0,
               top: 0,
@@ -293,18 +331,14 @@ async function renderHtmlAsset({
 
           const left = Math.max(
             0,
-            Math.min(...contentElements.map((rect) => rect.left))
+            Math.min(...bounds.map((rect) => rect.left))
           )
           const top = Math.max(
             0,
-            Math.min(...contentElements.map((rect) => rect.top))
+            Math.min(...bounds.map((rect) => rect.top))
           )
-          const right = Math.max(
-            ...contentElements.map((rect) => rect.right)
-          )
-          const bottom = Math.max(
-            ...contentElements.map((rect) => rect.bottom)
-          )
+          const right = Math.max(...bounds.map((rect) => rect.right))
+          const bottom = Math.max(...bounds.map((rect) => rect.bottom))
 
           return {
             left,
