@@ -314,9 +314,13 @@ async function convertPngBufferToHeic(pngData, directory) {
   }
 }
 
-async function createTemplatedAttachment(payload, row, directory) {
+async function createTemplatedAttachment(
+  payload,
+  row,
+  directory,
+  context = createTemplateContext(row)
+) {
   const template = payload.attachmentTemplate
-  const context = createTemplateContext(row)
   const html = expandTemplate(template.html, row, context)
   const format = template.format
   const fileName = createAttachmentFileName(
@@ -530,14 +534,20 @@ async function pressMacSendShortcut(page) {
   }
 }
 
-async function sendOneEmail(page, payload, row, attachmentPath) {
+async function sendOneEmail(
+  page,
+  payload,
+  row,
+  attachmentPath,
+  templateContext = createTemplateContext(row)
+) {
   const email = getRecipientValue(row, 'email')
 
   if (!email) {
     throw new Error('This CSV row does not contain an email address.')
   }
 
-  const context = createTemplateContext(row)
+  const context = templateContext
   const expandedSubject = expandTemplate(payload.subject, row, context)
   const body = expandTemplate(payload.body, row, context)
   const typingDelay = Math.max(Number(payload.typingDelayMs) || 0, 0)
@@ -757,20 +767,23 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
       throw new Error('The campaign CSV does not contain any recipients.')
     }
 
-    if (payload.attachment?.data) {
+    if (payload.attachment?.data || payload.attachmentTemplate) {
       // Keep the uploaded file's original basename so Gmail displays the
       // filename the user selected. Isolation comes from the unique temp
       // directory, not from changing the visible filename.
       attachmentDirectory = fs.mkdtempSync(
         path.join(app.getPath('temp'), 'mail-system-')
       )
-      const originalName =
-        path.basename(payload.attachment.name || 'attachment') || 'attachment'
-      attachmentPath = path.join(attachmentDirectory, originalName)
-      fs.writeFileSync(
-        attachmentPath,
-        Buffer.from(new Uint8Array(payload.attachment.data))
-      )
+
+      if (payload.attachment?.data) {
+        const originalName =
+          path.basename(payload.attachment.name || 'attachment') || 'attachment'
+        attachmentPath = path.join(attachmentDirectory, originalName)
+        fs.writeFileSync(
+          attachmentPath,
+          Buffer.from(new Uint8Array(payload.attachment.data))
+        )
+      }
     }
 
     const connection = await connectToGmail(payload.port)
@@ -789,9 +802,27 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
       }
 
       const email = getRecipientValue(row, 'email')
+      const templateContext = createTemplateContext(row)
+
+      let recipientAttachmentPath = attachmentPath
 
       try {
-        await sendOneEmail(connection.page, payload, row, attachmentPath)
+        if (payload.attachmentTemplate) {
+          recipientAttachmentPath = await createTemplatedAttachment(
+            payload,
+            row,
+            attachmentDirectory,
+            templateContext
+          )
+        }
+
+        await sendOneEmail(
+          connection.page,
+          payload,
+          row,
+          recipientAttachmentPath,
+          templateContext
+        )
         sent += 1
         processed += 1
         emitProgress({
@@ -814,6 +845,15 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
           recipientEmail: email,
           error: error.message,
         })
+      } finally {
+        if (
+          payload.attachmentTemplate &&
+          recipientAttachmentPath &&
+          recipientAttachmentPath !== attachmentPath &&
+          fs.existsSync(recipientAttachmentPath)
+        ) {
+          fs.unlinkSync(recipientAttachmentPath)
+        }
       }
 
       if (payload.delaySeconds > 0 && processed < recipients.length) {
