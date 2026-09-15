@@ -170,6 +170,45 @@ function cropScreenshotToHtmlBounds(screenshot, dimensions, renderScale) {
   }
 }
 
+async function captureHtmlScreenshot(
+  webContents,
+  { width, height, renderScale, type }
+) {
+  const debuggerSession = webContents.debugger
+  let attachedHere = false
+
+  try {
+    if (!debuggerSession.isAttached()) {
+      debuggerSession.attach('1.3')
+      attachedHere = true
+    }
+
+    const result = await debuggerSession.sendCommand('Page.captureScreenshot', {
+      format: type === 'jpeg' ? 'jpeg' : 'png',
+      ...(type === 'jpeg' ? { quality: 98 } : {}),
+      fromSurface: true,
+      captureBeyondViewport: true,
+      clip: {
+        x: 0,
+        y: 0,
+        width: Math.max(Number(width) || 1, 1),
+        height: Math.max(Number(height) || 1, 1),
+        scale: renderScale,
+      },
+    })
+
+    return {
+      data: Buffer.from(result.data, 'base64'),
+      width: Math.max(Math.ceil(Number(width) || 1), 1) * renderScale,
+      height: Math.max(Math.ceil(Number(height) || 1), 1) * renderScale,
+    }
+  } finally {
+    if (attachedHere && debuggerSession.isAttached()) {
+      debuggerSession.detach()
+    }
+  }
+}
+
 async function renderHtmlAsset({
   html,
   type,
@@ -359,11 +398,11 @@ async function renderHtmlAsset({
         12000
       )
       const renderScale = 2
-      const captureWidth = (displayLeft + displayWidth) * renderScale
-      let captureHeight = (displayTop + displayHeight) * renderScale
-
-      renderWindow.webContents.setZoomFactor(renderScale)
-      renderWindow.setContentSize(captureWidth, captureHeight)
+      renderWindow.webContents.setZoomFactor(1)
+      renderWindow.setContentSize(
+        displayWidth,
+        Math.max(Math.min(displayHeight, 900), 1)
+      )
       await wait(100)
 
       const finalContentHeight = await renderWindow.webContents.executeJavaScript(`
@@ -374,41 +413,20 @@ async function renderHtmlAsset({
           1
         )
       `)
-      const zoomedDisplayHeight = Math.min(
+      const finalDisplayHeight = Math.min(
         Math.max(Math.ceil(Number(finalContentHeight) || 0), displayHeight),
         12000
       )
-      captureHeight = Math.max(
-        captureHeight,
-        (displayTop + zoomedDisplayHeight) * renderScale
+      const outputScreenshot = await captureHtmlScreenshot(
+        renderWindow.webContents,
+        {
+          width: displayWidth,
+          height: trimToContent ? finalDisplayHeight : displayHeight,
+          renderScale,
+          type,
+        }
       )
-      if (captureHeight !== (displayTop + displayHeight) * renderScale) {
-        renderWindow.setContentSize(captureWidth, captureHeight)
-        await wait(100)
-      }
-
-      const screenshot = await renderWindow.webContents.capturePage({
-        x: 0,
-        y: 0,
-        width: captureWidth,
-        height: captureHeight,
-      })
-      const outputScreenshot = trimToContent
-        ? cropScreenshotToHtmlBounds(screenshot, {
-            left: displayLeft,
-            top: displayTop,
-            width: displayWidth,
-            height: zoomedDisplayHeight,
-          }, renderScale)
-        : {
-            image: screenshot,
-            width: screenshot.getSize().width,
-            height: screenshot.getSize().height,
-          }
-      const naturalDisplayWidth = Math.max(
-        outputScreenshot.width / renderScale,
-        1
-      )
+      const naturalDisplayWidth = Math.max(outputScreenshot.width / renderScale, 1)
       const naturalDisplayHeight = Math.max(
         outputScreenshot.height / renderScale,
         1
@@ -422,10 +440,7 @@ async function renderHtmlAsset({
 
       return {
         success: true,
-        data:
-          type === 'png'
-            ? outputScreenshot.image.toPNG()
-            : outputScreenshot.image.toJPEG(98),
+        data: outputScreenshot.data,
         mimeType: type === 'png' ? 'image/png' : 'image/jpeg',
         width: outputScreenshot.width,
         height: outputScreenshot.height,
