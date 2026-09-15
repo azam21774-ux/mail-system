@@ -8,7 +8,9 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "vite build",
-    "start": "electron ."
+    "start": "electron .",
+    "package:win": "npm run build && electron-builder --win nsis",
+    "package:win:portable": "npm run build && electron-builder --win portable"
   },
   "dependencies": {
     "docx": "^9.7.1",
@@ -29,5 +31,36 @@
     "electron-builder": "^26.15.3",
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.0"
+  },
+  "build": {
+    "appId": "com.mailsystem.desktop",
+    "productName": "Mail System",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Mail-System-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Mail System"
+    }
   }
 }

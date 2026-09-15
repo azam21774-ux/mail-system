@@ -8,13 +8,46 @@ const ExcelJS = require('exceljs')
 const { Document, ImageRun, Packer, Paragraph } = require('docx')
 const PptxGenJS = require('pptxgenjs')
 
-const CHROME_PATH =
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-
 const profilesRoot = path.join(app.getPath('userData'), 'chrome-profiles')
 const campaignJobs = new Map()
 
 let mainWindow
+
+function getChromePath() {
+  const candidates =
+    process.platform === 'darwin'
+      ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
+      : process.platform === 'win32'
+        ? [
+            process.env.LOCALAPPDATA &&
+              path.join(
+                process.env.LOCALAPPDATA,
+                'Google',
+                'Chrome',
+                'Application',
+                'chrome.exe'
+              ),
+            process.env.PROGRAMFILES &&
+              path.join(
+                process.env.PROGRAMFILES,
+                'Google',
+                'Chrome',
+                'Application',
+                'chrome.exe'
+              ),
+            process.env['PROGRAMFILES(X86)'] &&
+              path.join(
+                process.env['PROGRAMFILES(X86)'],
+                'Google',
+                'Chrome',
+                'Application',
+                'chrome.exe'
+              ),
+          ]
+        : ['/usr/bin/google-chrome', '/usr/bin/chromium']
+
+  return candidates.filter(Boolean).find((candidate) => fs.existsSync(candidate))
+}
 
 function runCommand(command, args) {
   return new Promise((resolve, reject) => {
@@ -1242,7 +1275,8 @@ ipcMain.handle('convert-png-to-heic', async (_event, payload) => {
 
 ipcMain.handle('open-chrome-profile', async (_event, profileId, port) => {
   try {
-    if (!fs.existsSync(CHROME_PATH)) {
+    const chromePath = getChromePath()
+    if (!chromePath) {
       throw new Error('Google Chrome not found.')
     }
 
@@ -1258,7 +1292,7 @@ ipcMain.handle('open-chrome-profile', async (_event, profileId, port) => {
     // Unique debugging port for each profile.
     const debugPort = Number(port) || 9222
 
-    const chrome = spawn(CHROME_PATH, [
+    const chrome = spawn(chromePath, [
       `--user-data-dir=${profileDir}`,
       `--remote-debugging-port=${debugPort}`,
       '--no-first-run',
