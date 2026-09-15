@@ -1,5 +1,5 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
-const { spawn } = require('child_process')
+const { spawn, execFile } = require('child_process')
 const crypto = require('crypto')
 const path = require('path')
 const fs = require('fs')
@@ -12,6 +12,18 @@ const profilesRoot = path.join(app.getPath('userData'), 'chrome-profiles')
 const campaignJobs = new Map()
 
 let mainWindow
+
+function runCommand(command, args) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(stderr || error.message))
+        return
+      }
+      resolve(stdout)
+    })
+  })
+}
 
 const wait = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds))
@@ -541,6 +553,47 @@ ipcMain.handle('stop-campaign', async (_event, campaignId) => {
 
   job.cancelled = true
   return { success: true }
+})
+
+ipcMain.handle('convert-png-to-heic', async (_event, payload) => {
+  if (process.platform !== 'darwin') {
+    return {
+      success: false,
+      error: 'HEIC generation requires the macOS Electron app.',
+    }
+  }
+
+  let directory
+
+  try {
+    directory = fs.mkdtempSync(path.join(app.getPath('temp'), 'mail-heic-'))
+    const inputPath = path.join(directory, 'source.png')
+    const outputPath = path.join(directory, 'output.heic')
+
+    fs.writeFileSync(inputPath, Buffer.from(new Uint8Array(payload.data)))
+    await runCommand('/usr/bin/sips', [
+      '-s',
+      'format',
+      'heic',
+      inputPath,
+      '--out',
+      outputPath,
+    ])
+
+    return {
+      success: true,
+      data: fs.readFileSync(outputPath),
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || 'Could not create the HEIC attachment.',
+    }
+  } finally {
+    if (directory && fs.existsSync(directory)) {
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  }
 })
 
 ipcMain.handle('open-chrome-profile', async (_event, profileId, port) => {

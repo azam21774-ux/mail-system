@@ -1362,6 +1362,82 @@ nav {
   line-height: 1.45;
 }
 
+.attachment-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 16px;
+  padding: 4px;
+  border-radius: 9px;
+  background: #f0f1f3;
+}
+
+.attachment-mode-tabs button {
+  border: 0;
+  border-radius: 7px;
+  padding: 9px 10px;
+  background: transparent;
+  color: #777b83;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.attachment-mode-tabs button.active {
+  background: white;
+  color: #202328;
+  box-shadow: 0 1px 3px rgba(22, 25, 30, 0.08);
+}
+
+.attachment-generator {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.attachment-generator .field-label:not(:first-child) {
+  margin-top: 8px;
+}
+
+.attachment-format-select {
+  appearance: auto;
+  cursor: pointer;
+}
+
+.attachment-html-editor {
+  width: 100%;
+  min-height: 165px;
+  resize: vertical;
+  border: 1px solid #dfe2e7;
+  border-radius: 9px;
+  outline: none;
+  padding: 11px 12px;
+  background: #101214;
+  color: #e6e8eb;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.attachment-html-editor:focus {
+  border-color: #8a8f9a;
+  box-shadow: 0 0 0 3px rgba(23, 25, 29, 0.06);
+}
+
+.attachment-generate-btn {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+.attachment-generate-btn:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.attachment-result {
+  margin-top: 12px;
+}
+
 .field-label {
   display: block;
   margin: 0 0 8px;

@@ -24,7 +24,252 @@ import {
   Clock3,
   Keyboard,
 } from 'lucide-react'
+import html2canvas from 'html2canvas'
+import { jsPDF } from 'jspdf'
+import {
+  Document,
+  HeadingLevel,
+  Packer,
+  Paragraph,
+  TextRun,
+} from 'docx'
+import * as XLSX from 'xlsx'
+import PptxGenJS from 'pptxgenjs'
 import './App.css'
+
+const ATTACHMENT_FORMATS = [
+  { value: 'PDF', label: 'PDF', extension: 'pdf' },
+  { value: 'WKPDF', label: 'WKPDF', extension: 'pdf' },
+  { value: 'PDF_ENCODE', label: 'PDF ENCODE', extension: 'pdf' },
+  { value: 'PDF_IMAGE', label: 'PDF IMAGE', extension: 'pdf' },
+  { value: 'PDF_IMAGE_PNG', label: 'PDF IMAGE PNG', extension: 'pdf' },
+  { value: 'PNG', label: 'IMAGE PNG', extension: 'png' },
+  { value: 'JPG', label: 'IMAGE JPG', extension: 'jpg' },
+  { value: 'HEIC', label: 'IMAGE HEIC', extension: 'heic' },
+  { value: 'TXT', label: 'TXT', extension: 'txt' },
+  { value: 'DOCX', label: 'DOCX', extension: 'docx' },
+  { value: 'XLSX', label: 'XLSX', extension: 'xlsx' },
+  { value: 'PPTX', label: 'PPTX', extension: 'pptx' },
+  { value: 'HTML', label: 'HTML', extension: 'html' },
+]
+
+function stripHtml(html) {
+  const documentFragment = new DOMParser().parseFromString(
+    String(html || ''),
+    'text/html'
+  )
+  return documentFragment.body.textContent?.trim() || ''
+}
+
+function attachmentBaseName(value) {
+  return (
+    String(value || 'attachment')
+      .trim()
+      .replace(/\.[a-z0-9]+$/i, '')
+      .replace(/[\\/:*?"<>|]+/g, '-')
+      .trim() || 'attachment'
+  )
+}
+
+function createHtmlRenderNode(html) {
+  const node = document.createElement('div')
+  node.innerHTML = html
+  node.style.position = 'fixed'
+  node.style.left = '-100000px'
+  node.style.top = '0'
+  node.style.width = '794px'
+  node.style.padding = '36px'
+  node.style.background = '#ffffff'
+  node.style.color = '#111111'
+  node.style.fontFamily = 'Arial, sans-serif'
+  node.style.fontSize = '16px'
+  node.style.lineHeight = '1.5'
+  node.style.boxSizing = 'border-box'
+  document.body.appendChild(node)
+  return node
+}
+
+async function renderHtmlCanvas(html) {
+  const node = createHtmlRenderNode(html)
+  try {
+    return await html2canvas(node, {
+      backgroundColor: '#ffffff',
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    })
+  } finally {
+    node.remove()
+  }
+}
+
+function blobToFile(blob, fileName) {
+  return new File([blob], fileName, {
+    type: blob.type || 'application/octet-stream',
+  })
+}
+
+async function createPdfFromHtml(html, imageOnly = false) {
+  const pdf = new jsPDF({
+    unit: 'pt',
+    format: 'a4',
+    compress: true,
+  })
+
+  if (imageOnly) {
+    const canvas = await renderHtmlCanvas(html)
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const pageHeight = pdf.internal.pageSize.getHeight()
+    const imageHeight = (canvas.height * pageWidth) / canvas.width
+    let remainingHeight = imageHeight
+    let offset = 0
+
+    while (remainingHeight > 0) {
+      if (offset > 0) pdf.addPage()
+      pdf.addImage(
+        canvas.toDataURL('image/png'),
+        'PNG',
+        0,
+        -offset,
+        pageWidth,
+        imageHeight
+      )
+      offset += pageHeight
+      remainingHeight -= pageHeight
+    }
+  } else {
+    const node = createHtmlRenderNode(html)
+    try {
+      await new Promise((resolve, reject) => {
+        pdf.html(node, {
+          margin: 36,
+          autoPaging: 'text',
+          html2canvas: {
+            scale: 1,
+            useCORS: true,
+          },
+          callback: () => resolve(),
+          onerror: reject,
+        })
+      })
+    } finally {
+      node.remove()
+    }
+  }
+
+  return pdf.output('blob')
+}
+
+async function createAttachmentFromHtml(html, format, requestedName) {
+  const option = ATTACHMENT_FORMATS.find((item) => item.value === format)
+  const baseName = attachmentBaseName(requestedName)
+  const extension = option?.extension || 'html'
+  const fileName = `${baseName}.${extension}`
+  const plainText = stripHtml(html)
+
+  if (format === 'HTML') {
+    return blobToFile(new Blob([html], { type: 'text/html' }), fileName)
+  }
+
+  if (format === 'TXT') {
+    return blobToFile(new Blob([plainText], { type: 'text/plain' }), fileName)
+  }
+
+  if (format === 'PDF' || format === 'WKPDF' || format === 'PDF_ENCODE') {
+    return blobToFile(await createPdfFromHtml(html), fileName)
+  }
+
+  if (format === 'PDF_IMAGE' || format === 'PDF_IMAGE_PNG') {
+    return blobToFile(await createPdfFromHtml(html, true), fileName)
+  }
+
+  if (format === 'PNG' || format === 'JPG') {
+    const canvas = await renderHtmlCanvas(html)
+    const imageType = format === 'PNG' ? 'image/png' : 'image/jpeg'
+    const imageBlob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, imageType, format === 'JPG' ? 0.92 : undefined)
+    )
+    if (!imageBlob) throw new Error('Could not render the HTML as an image.')
+    return blobToFile(imageBlob, fileName)
+  }
+
+  if (format === 'HEIC') {
+    const canvas = await renderHtmlCanvas(html)
+    const pngBlob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, 'image/png')
+    )
+    const pngBytes = await pngBlob.arrayBuffer()
+    const converted = await window.electronAPI?.convertPngToHeic?.({
+      name: fileName,
+      data: pngBytes,
+    })
+    if (!converted?.success) {
+      throw new Error(
+        converted?.error ||
+          'HEIC conversion is available in the macOS Electron app only.'
+      )
+    }
+    return new File([converted.data], fileName, { type: 'image/heic' })
+  }
+
+  if (format === 'DOCX') {
+    const paragraphs = plainText
+      .split(/\n+/)
+      .filter(Boolean)
+      .map(
+        (line, index) =>
+          new Paragraph({
+            text: line,
+            heading: index === 0 ? HeadingLevel.HEADING_1 : undefined,
+          })
+      )
+    const document = new Document({
+      sections: [{ children: paragraphs.length ? paragraphs : [new Paragraph('')] }],
+    })
+    return blobToFile(await Packer.toBlob(document), fileName)
+  }
+
+  if (format === 'XLSX') {
+    const workbook = XLSX.utils.book_new()
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ['HTML content'],
+      ...plainText.split(/\n+/).filter(Boolean).map((line) => [line]),
+    ])
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Content')
+    const data = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+    return blobToFile(
+      new Blob([data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+      fileName
+    )
+  }
+
+  if (format === 'PPTX') {
+    const presentation = new PptxGenJS()
+    const slide = presentation.addSlide()
+    slide.background = { color: 'FFFFFF' }
+    slide.addText(plainText || 'HTML content', {
+      x: 0.5,
+      y: 0.5,
+      w: 9,
+      h: 6.2,
+      fontFace: 'Arial',
+      fontSize: 18,
+      color: '111111',
+      breakLine: false,
+      margin: 0.1,
+      valign: 'top',
+      fit: 'shrink',
+    })
+    const data = await presentation.write({ outputType: 'blob' })
+    return new File([data], fileName, {
+      type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    })
+  }
+
+  throw new Error(`Unsupported attachment format: ${format}`)
+}
 
 function parseCsvLine(line) {
   const values = []
@@ -183,6 +428,13 @@ function App() {
   const [htmlMode, setHtmlMode] = useState(false)
   const [csvFile, setCsvFile] = useState(null)
   const [attachment, setAttachment] = useState(null)
+  const [attachmentMode, setAttachmentMode] = useState('html')
+  const [attachmentHtml, setAttachmentHtml] = useState(
+    '<h1>Hello {{name}}</h1><p>Your attached document is ready.</p>'
+  )
+  const [attachmentFormat, setAttachmentFormat] = useState('PDF')
+  const [attachmentFileName, setAttachmentFileName] = useState('attachment')
+  const [isGeneratingAttachment, setIsGeneratingAttachment] = useState(false)
   const [recipientCount, setRecipientCount] = useState(0)
   const [csvHeaders, setCsvHeaders] = useState([])
   const [csvRows, setCsvRows] = useState([])
@@ -678,6 +930,34 @@ function App() {
     addActivity('profile', 'Profile opened', `${profile.name} was opened.`)
   }
 
+  const generateAttachment = async () => {
+    if (!attachmentHtml.trim()) {
+      alert('Enter HTML content before generating an attachment.')
+      return
+    }
+
+    setIsGeneratingAttachment(true)
+
+    try {
+      const generatedFile = await createAttachmentFromHtml(
+        attachmentHtml,
+        attachmentFormat,
+        attachmentFileName
+      )
+      setAttachment(generatedFile)
+      setAttachmentMode('html')
+      addActivity(
+        'campaign',
+        'Attachment generated',
+        `${generatedFile.name} was created from HTML.`
+      )
+    } catch (error) {
+      alert(error.message || 'Could not generate this attachment.')
+    } finally {
+      setIsGeneratingAttachment(false)
+    }
+  }
+
   const resetCampaignForm = () => {
     setCampaignName('')
     setSelectedProfileIds(profiles[0] ? [String(profiles[0].id)] : [])
@@ -691,6 +971,13 @@ function App() {
     setCsvRows([])
     setDelaySeconds(settings.defaultDelay ?? 0)
     setTypingDelayMs(0)
+    setAttachment(null)
+    setAttachmentMode('html')
+    setAttachmentHtml(
+      '<h1>Hello {{name}}</h1><p>Your attached document is ready.</p>'
+    )
+    setAttachmentFormat('PDF')
+    setAttachmentFileName('attachment')
   }
 
   const openCampaignCreator = () => {
@@ -723,6 +1010,13 @@ function App() {
           ? { name: campaign.attachmentName, size: 0 }
           : null)
     )
+    setAttachmentMode(campaign.attachmentMode || 'upload')
+    setAttachmentHtml(
+      campaign.attachmentHtml ||
+        '<h1>Hello {{name}}</h1><p>Your attached document is ready.</p>'
+    )
+    setAttachmentFormat(campaign.attachmentFormat || 'PDF')
+    setAttachmentFileName(campaign.attachmentFileName || 'attachment')
     setRecipientCount(campaign.recipients)
     setCsvHeaders(campaign.csvHeaders || [])
     setCsvRows(campaign.recipientRows || [])
@@ -802,6 +1096,10 @@ function App() {
       recipientRows: csvRows,
       csvName: csvFile.name,
       attachmentName: attachment?.name || null,
+      attachmentMode,
+      attachmentHtml,
+      attachmentFormat,
+      attachmentFileName,
       recipients: recipientCount,
       delaySeconds: Number(delaySeconds),
       typingDelayMs: Number(typingDelayMs),
@@ -1137,19 +1435,116 @@ function App() {
             <div className="form-card-header">
               <div>
                 <h3>Attachment</h3>
-                <p>Attach any file supported by your system.</p>
+                <p>Convert HTML into a real file or upload an existing one.</p>
               </div>
             </div>
 
+            <div className="attachment-mode-tabs">
+              <button
+                type="button"
+                className={attachmentMode === 'html' ? 'active' : ''}
+                onClick={() => setAttachmentMode('html')}
+              >
+                Generate from HTML
+              </button>
+              <button
+                type="button"
+                className={attachmentMode === 'upload' ? 'active' : ''}
+                onClick={() => setAttachmentMode('upload')}
+              >
+                Upload File
+              </button>
+            </div>
+
+            {attachmentMode === 'html' ? (
+              <div className="attachment-generator">
+                <label className="field-label" htmlFor="attachment-file-name">
+                  File name
+                </label>
+                <input
+                  id="attachment-file-name"
+                  className="text-input"
+                  value={attachmentFileName}
+                  onChange={(event) =>
+                    setAttachmentFileName(event.target.value)
+                  }
+                  placeholder="e.g. monthly-report"
+                />
+
+                <label className="field-label" htmlFor="attachment-format">
+                  Output format
+                </label>
+                <select
+                  id="attachment-format"
+                  className="text-input attachment-format-select"
+                  value={attachmentFormat}
+                  onChange={(event) => setAttachmentFormat(event.target.value)}
+                >
+                  {ATTACHMENT_FORMATS.map((format) => (
+                    <option key={format.value} value={format.value}>
+                      {format.label}
+                    </option>
+                  ))}
+                </select>
+
+                <label className="field-label" htmlFor="attachment-html">
+                  HTML code
+                </label>
+                <textarea
+                  id="attachment-html"
+                  className="attachment-html-editor"
+                  value={attachmentHtml}
+                  onChange={(event) => setAttachmentHtml(event.target.value)}
+                  placeholder="<h1>Report</h1><p>Content goes here...</p>"
+                  spellCheck="false"
+                />
+
+                <button
+                  type="button"
+                  className="primary-btn attachment-generate-btn"
+                  onClick={generateAttachment}
+                  disabled={isGeneratingAttachment}
+                >
+                  <Paperclip size={16} />
+                  {isGeneratingAttachment
+                    ? 'Converting...'
+                    : 'Convert & Attach'}
+                </button>
+              </div>
+            ) : (
+              <label className="upload-box compact">
+                <Paperclip size={23} />
+                <strong>Upload Existing File</strong>
+                <span>PDF, DOCX, XLSX, PPTX, images and other files</span>
+
+                <input
+                  type="file"
+                  accept="*/*"
+                  onClick={(e) => {
+                    e.currentTarget.value = ''
+                  }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      setAttachment(file)
+                      setAttachmentMode('upload')
+                    }
+                  }}
+                />
+              </label>
+            )}
+
             {attachment && (
-              <div className="selected-file">
+              <div className="selected-file attachment-result">
                 <div className="file-icon">
                   <Paperclip size={18} />
                 </div>
                 <div className="file-info">
                   <strong>{attachment.name}</strong>
                   <span>
-                    {(attachment.size / 1024 / 1024).toFixed(2)} MB
+                    {attachment.size
+                      ? `${(attachment.size / 1024 / 1024).toFixed(2)} MB`
+                      : 'Ready to attach'}
                   </span>
                 </div>
                 <button
@@ -1161,25 +1556,6 @@ function App() {
                   Remove
                 </button>
               </div>
-            )}
-
-            {!attachment && (
-              <label className="upload-box compact">
-                <Paperclip size={23} />
-                <strong>Upload Attachment</strong>
-                <span>PDF, DOCX, XLSX, ZIP, images and other files</span>
-
-                <input
-                  type="file"
-                  onClick={(e) => {
-                    e.currentTarget.value = ''
-                  }}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) setAttachment(file)
-                  }}
-                />
-              </label>
             )}
           </div>
 

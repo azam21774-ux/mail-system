@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopCampaign: (campaignId) =>
     ipcRenderer.invoke('stop-campaign', campaignId),
 
+  convertPngToHeic: (payload) =>
+    ipcRenderer.invoke('convert-png-to-heic', payload),
+
   onCampaignProgress: (handler) => {
     const listener = (_event, progress) => handler(progress)
     ipcRenderer.on('campaign-progress', listener)
