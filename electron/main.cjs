@@ -113,11 +113,9 @@ async function connectToGmail(port) {
   return { browser, page }
 }
 
-async function waitForAttachmentUpload(page, filePath) {
-  const fileName = path.basename(filePath).toLowerCase()
-
+async function waitForAttachmentUpload(page) {
   await page.waitForFunction(
-    (expectedFileName) => {
+    () => {
       const visible = (element) => {
         const style = window.getComputedStyle(element)
         return (
@@ -128,18 +126,24 @@ async function waitForAttachmentUpload(page, filePath) {
         )
       }
 
-      const pageText = String(document.body.innerText || '').toLowerCase()
-      const fileNameVisible = pageText.includes(expectedFileName)
       const uploadStillRunning = Array.from(
         document.querySelectorAll(
           '[role="progressbar"], [aria-label*="Uploading" i], [aria-label*="uploading" i]'
         )
       ).some(visible)
 
-      return fileNameVisible && !uploadStillRunning
+      // Gmail renders a remove-attachment control only after the attachment
+      // has been accepted into the compose window. This avoids depending on
+      // the visible filename, which can be truncated or localized.
+      const attachmentReady = Array.from(
+        document.querySelectorAll(
+          '[aria-label*="Remove attachment" i], [data-tooltip*="Remove attachment" i], [title*="Remove attachment" i], .aA6'
+        )
+      ).some(visible)
+
+      return attachmentReady && !uploadStillRunning
     },
-    { timeout: 30000 },
-    fileName
+    { timeout: 30000 }
   )
 }
 
@@ -184,7 +188,7 @@ async function sendOneEmail(page, payload, row, attachmentPath) {
 
     // Do not fill recipient, subject, or body until Gmail visibly shows the
     // uploaded filename and no upload progress indicator remains.
-    await waitForAttachmentUpload(page, attachmentPath)
+    await waitForAttachmentUpload(page)
   }
 
   const recipientInput = await page.waitForSelector(
