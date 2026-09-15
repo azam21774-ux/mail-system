@@ -124,6 +124,8 @@ async function renderHtmlWithElectron(html, type) {
     }),
     width: result.width,
     height: result.height,
+    displayWidth: result.displayWidth,
+    displayHeight: result.displayHeight,
   }
 }
 
@@ -736,6 +738,14 @@ function App() {
         }
       }
 
+      const attachmentUsesTemplate = Boolean(
+        campaign.attachment &&
+          campaign.attachmentHtml &&
+          (campaign.attachmentMode === 'html' ||
+            /\{\{[^}]+\}\}/.test(campaign.attachmentFileName || '') ||
+            /\{\{[^}]+\}\}/.test(campaign.attachmentHtml || ''))
+      )
+
       const result = await window.electronAPI.runCampaign({
         campaignId: campaign.id,
         profileId: profile.id,
@@ -750,14 +760,9 @@ function App() {
         htmlMode: Boolean(campaign.htmlMode || looksLikeHtml(campaign.body)),
         delaySeconds: campaign.delaySeconds ?? 0,
         typingDelayMs: campaign.typingDelayMs ?? 0,
-        attachment:
-          campaign.attachmentMode === 'html' && campaign.attachmentHtml
-            ? null
-            : attachmentPayload,
+        attachment: attachmentUsesTemplate ? null : attachmentPayload,
         attachmentTemplate:
-          campaign.attachmentMode === 'html' &&
-          campaign.attachment &&
-          campaign.attachmentHtml
+          attachmentUsesTemplate
             ? {
                 html: campaign.attachmentHtml,
                 format: campaign.attachmentFormat || 'PDF',
