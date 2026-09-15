@@ -202,6 +202,7 @@ async function renderHtmlAsset({
     show: false,
     width: 1200,
     height: 900,
+    backgroundColor: '#ffffff',
     webPreferences: {
       contextIsolation: true,
       sandbox: true,
@@ -232,6 +233,7 @@ async function renderHtmlAsset({
           if (!element) return;
           element.style.setProperty('margin', '0', 'important');
           element.style.setProperty('padding', '0', 'important');
+          element.style.setProperty('background-color', '#ffffff', 'important');
         };
 
         resetBox(document.documentElement);
