@@ -55,7 +55,7 @@ function App() {
   const [attachment, setAttachment] = useState(null)
   const [recipientCount, setRecipientCount] = useState(0)
   const [csvHeaders, setCsvHeaders] = useState([])
-  const [delaySeconds, setDelaySeconds] = useState(5)
+  const [delaySeconds, setDelaySeconds] = useState(0)
 
   const menu = [
     { name: 'Dashboard', icon: LayoutDashboard },
@@ -466,28 +466,48 @@ function App() {
           <div className="form-card">
             <div className="form-card-header">
               <div>
-                <h3>Run with Profile</h3>
-                <p>Choose which Chrome account will run this campaign.</p>
+                <h3>Run with Profiles</h3>
+                <p>Choose one or more Chrome accounts for this campaign.</p>
               </div>
             </div>
 
-            <label className="field-label">Chrome Profile</label>
-            <select
-              className="text-input profile-select"
-              value={selectedProfileId}
-              onChange={(e) => setSelectedProfileId(e.target.value)}
-            >
-              <option value="">Select a profile</option>
+            <label className="field-label">Chrome Profiles</label>
+            <div className="profile-picker">
               {profiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name} · {profile.running ? 'Running' : profile.status}
-                </option>
+                <label className="profile-option" key={profile.id}>
+                  <input
+                    type="checkbox"
+                    checked={selectedProfileIds.includes(String(profile.id))}
+                    onChange={() =>
+                      setSelectedProfileIds((current) =>
+                        current.includes(String(profile.id))
+                          ? current.filter(
+                              (id) => id !== String(profile.id)
+                            )
+                          : [...current, String(profile.id)]
+                      )
+                    }
+                  />
+                  <span className="profile-option-copy">
+                    <strong>{profile.name}</strong>
+                    <small>
+                      {profile.running ? 'Running' : profile.status}
+                    </small>
+                  </span>
+                </label>
               ))}
-            </select>
+            </div>
 
             {!profiles.length && (
               <p className="field-hint">
                 Add a Chrome profile before starting this campaign.
+              </p>
+            )}
+
+            {profiles.length > 0 && (
+              <p className="selection-hint">
+                {selectedProfileIds.length} profile
+                {selectedProfileIds.length === 1 ? '' : 's'} selected
               </p>
             )}
           </div>
@@ -507,15 +527,22 @@ function App() {
             <input
               className="delay-slider"
               type="range"
-              min="1"
+              min="0"
               max="60"
               step="1"
               value={delaySeconds}
+              style={{
+                background: `linear-gradient(to right, #24272d 0%, #24272d ${
+                  (Number(delaySeconds) / 60) * 100
+                }%, #e5e7eb ${
+                  (Number(delaySeconds) / 60) * 100
+                }%, #e5e7eb 100%)`,
+              }}
               onChange={(e) => setDelaySeconds(Number(e.target.value))}
               aria-label="Delay between emails in seconds"
             />
             <div className="delay-scale">
-              <span>1 sec</span>
+              <span>0 sec</span>
               <span>60 sec</span>
             </div>
           </div>
@@ -801,9 +828,9 @@ function App() {
             <div>
               <span>Profile</span>
               <strong>
-                {profiles.find(
-                  (profile) => String(profile.id) === selectedProfileId
-                )?.name || 'Not set'}
+                {selectedProfileIds.length
+                  ? `${selectedProfileIds.length} selected`
+                  : 'Not set'}
               </strong>
             </div>
             <div>
@@ -1064,16 +1091,19 @@ function App() {
                         <span>Port: {profile.debugPort || 9222}</span>
                       </div>
 
-                        {campaigns.filter(
-                          (campaign) => campaign.profileId === profile.id
+                        {campaigns.filter((campaign) =>
+                          campaign.profileIds?.length
+                            ? campaign.profileIds.includes(profile.id)
+                            : campaign.profileId === profile.id
                         ).length > 0 && (
                           <div className="profile-campaigns">
                             <span>Assigned campaigns</span>
                             <strong>
                               {campaigns
-                                .filter(
-                                  (campaign) =>
-                                    campaign.profileId === profile.id
+                                .filter((campaign) =>
+                                  campaign.profileIds?.length
+                                    ? campaign.profileIds.includes(profile.id)
+                                    : campaign.profileId === profile.id
                                 )
                                 .map((campaign) => campaign.name)
                                 .join(', ')}
@@ -1231,12 +1261,17 @@ function App() {
                         <p className="campaign-profile">
                           <Globe size={13} />
                           {campaign.profileName ||
-                            profiles.find(
-                              (profile) => profile.id === campaign.profileId
-                            )?.name ||
+                            profiles
+                              .filter((profile) =>
+                                campaign.profileIds?.length
+                                  ? campaign.profileIds.includes(profile.id)
+                                  : profile.id === campaign.profileId
+                              )
+                              .map((profile) => profile.name)
+                              .join(', ') ||
                             'No profile assigned'}
                           <span>
-                            · {campaign.delaySeconds || 5}s delay
+                            · {campaign.delaySeconds ?? 0}s delay
                           </span>
                         </p>
 

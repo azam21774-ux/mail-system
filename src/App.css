@@ -1640,6 +1640,70 @@ nav {
   cursor: pointer;
 }
 
+.profile-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.profile-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e2e5ea;
+  border-radius: 9px;
+  padding: 10px 11px;
+  background: #fbfcfd;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.profile-option:hover {
+  border-color: #b9bec7;
+  background: #f7f8fa;
+}
+
+.profile-option:has(input:checked) {
+  border-color: #25282e;
+  background: #f5f6f8;
+}
+
+.profile-option input {
+  width: 15px;
+  height: 15px;
+  accent-color: #24272d;
+  cursor: pointer;
+}
+
+.profile-option-copy {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.profile-option-copy strong {
+  overflow: hidden;
+  color: #353941;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-option-copy small {
+  flex-shrink: 0;
+  color: #959aa3;
+  font-size: 10px;
+  text-transform: capitalize;
+}
+
+.selection-hint {
+  margin: 10px 0 0;
+  color: #9297a0;
+  font-size: 10px;
+}
+
 .field-hint {
   margin: 9px 0 0;
   color: #9a9ea6;
@@ -1664,7 +1728,7 @@ nav {
   appearance: none;
   border-radius: 999px;
   outline: none;
-  background: linear-gradient(to right, #24272d 0%, #24272d 7%, #e5e7eb 7%, #e5e7eb 100%);
+  background: #e5e7eb;
   cursor: pointer;
 }
 
