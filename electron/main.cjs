@@ -127,67 +127,46 @@ function createStandaloneHtml(source) {
 </html>`
 }
 
-function trimScreenshotToContent(screenshot, renderScale) {
+function cropScreenshotToHtmlBounds(screenshot, dimensions, renderScale) {
   const size = screenshot.getSize()
-  const bitmap = screenshot.getBitmap()
+  const cropX = Math.max(
+    Math.floor(Number(dimensions.left || 0) * renderScale),
+    0
+  )
+  const cropY = Math.max(
+    Math.floor(Number(dimensions.top || 0) * renderScale),
+    0
+  )
+  const cropRight = Math.min(
+    Math.ceil(
+      (Number(dimensions.left || 0) + Number(dimensions.width || 0)) *
+        renderScale
+    ),
+    size.width
+  )
+  const cropBottom = Math.min(
+    Math.ceil(
+      (Number(dimensions.top || 0) + Number(dimensions.height || 0)) *
+        renderScale
+    ),
+    size.height
+  )
+  const width = Math.max(cropRight - cropX, 1)
+  const height = Math.max(cropBottom - cropY, 1)
 
-  if (!size.width || !size.height || !bitmap?.length) {
-    return {
-      image: screenshot,
-      width: size.width,
-      height: size.height,
-    }
+  if (!size.width || !size.height) {
+    return { image: screenshot, width: size.width, height: size.height }
   }
-
-  const background = [bitmap[0], bitmap[1], bitmap[2], bitmap[3]]
-  const threshold = 12
-  const isContentPixel = (offset) =>
-    Math.max(
-      Math.abs(bitmap[offset] - background[0]),
-      Math.abs(bitmap[offset + 1] - background[1]),
-      Math.abs(bitmap[offset + 2] - background[2]),
-      Math.abs(bitmap[offset + 3] - background[3])
-    ) > threshold
-
-  let left = size.width
-  let top = size.height
-  let right = -1
-  let bottom = -1
-
-  for (let y = 0; y < size.height; y += 1) {
-    for (let x = 0; x < size.width; x += 1) {
-      const offset = (y * size.width + x) * 4
-      if (!isContentPixel(offset)) continue
-      left = Math.min(left, x)
-      top = Math.min(top, y)
-      right = Math.max(right, x)
-      bottom = Math.max(bottom, y)
-    }
-  }
-
-  if (right < left || bottom < top) {
-    return {
-      image: screenshot,
-      width: size.width,
-      height: size.height,
-    }
-  }
-
-  const padding = Math.max(Math.round(renderScale), 1)
-  const cropX = Math.max(left - padding, 0)
-  const cropY = Math.max(top - padding, 0)
-  const cropRight = Math.min(right + padding + 1, size.width)
-  const cropBottom = Math.min(bottom + padding + 1, size.height)
 
   return {
     image: screenshot.crop({
       x: cropX,
       y: cropY,
-      width: cropRight - cropX,
-      height: cropBottom - cropY,
+      width,
+      height,
     }),
-    width: cropRight - cropX,
-    height: cropBottom - cropY,
+    width,
+    height,
   }
 }
 
@@ -356,7 +335,12 @@ async function renderHtmlAsset({
         height: captureHeight,
       })
       const outputScreenshot = trimToContent
-        ? trimScreenshotToContent(screenshot, renderScale)
+        ? cropScreenshotToHtmlBounds(screenshot, {
+            left: displayLeft,
+            top: displayTop,
+            width: displayWidth,
+            height: displayHeight,
+          }, renderScale)
         : {
             image: screenshot,
             width: screenshot.getSize().width,
@@ -470,7 +454,7 @@ async function createXlsxImageBuffer(image) {
   worksheet.addImage(imageId, {
     tl: { col: 0, row: 0, nativeCol: 0, nativeRow: 0 },
     ext: { width, height },
-    editAs: 'oneCell',
+    editAs: 'absolute',
   })
 
   return workbook.xlsx.writeBuffer()
@@ -1124,7 +1108,7 @@ ipcMain.handle('create-xlsx-from-image', async (_event, payload) => {
     worksheet.addImage(imageId, {
       tl: { col: 0, row: 0, nativeCol: 0, nativeRow: 0 },
       ext: { width, height },
-      editAs: 'oneCell',
+      editAs: 'absolute',
     })
 
     return {

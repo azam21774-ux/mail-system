@@ -1,1 +1,2 @@
 - [External npm lockfiles](external-npm-lockfiles.md) — keep package-lock resolved URLs on the public npm registry when installs must work outside Replit.
+- [XLSX floating image rendering](xlsx-floating-image-rendering.md) — crop to HTML layout bounds and use an absolute Excel anchor for movable image attachments.
