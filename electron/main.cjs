@@ -147,6 +147,74 @@ async function waitForAttachmentUpload(page) {
   )
 }
 
+async function clickGmailSend(page) {
+  const sendSelectors = [
+    'div[role="button"][aria-label^="Send"]',
+    'button[aria-label*="Send" i]',
+    '[aria-label^="Send"]',
+    '[data-tooltip^="Send"]',
+    '[command="send"]',
+    '.gU.Up',
+  ]
+
+  const selector = sendSelectors.join(', ')
+
+  const sendReady = await page
+    .waitForFunction(
+      (sendSelector) => {
+        const visible = (element) => {
+          const style = window.getComputedStyle(element)
+          const rect = element.getBoundingClientRect()
+          return (
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            rect.width > 0 &&
+            rect.height > 0
+          )
+        }
+
+        return Array.from(document.querySelectorAll(sendSelector)).some(
+          (element) =>
+            visible(element) &&
+            element.getAttribute('aria-disabled') !== 'true' &&
+            !element.disabled
+        )
+      },
+      { timeout: 12000 },
+      selector
+    )
+    .then(() => true)
+    .catch(() => false)
+
+  if (!sendReady) return false
+
+  await page.evaluate((sendSelector) => {
+    const visible = (element) => {
+      const style = window.getComputedStyle(element)
+      const rect = element.getBoundingClientRect()
+      return (
+        style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        rect.width > 0 &&
+        rect.height > 0
+      )
+    }
+
+    const button = Array.from(document.querySelectorAll(sendSelector)).find(
+      (element) =>
+        visible(element) &&
+        element.getAttribute('aria-disabled') !== 'true' &&
+        !element.disabled
+    )
+
+    if (!button) return
+    button.scrollIntoView({ block: 'center', inline: 'center' })
+    button.click()
+  }, selector)
+
+  return true
+}
+
 async function sendOneEmail(page, payload, row, attachmentPath) {
   const email = getRecipientValue(row, 'email')
 
@@ -222,14 +290,13 @@ async function sendOneEmail(page, payload, row, attachmentPath) {
     await messageBody.type(body, { delay: typingDelay })
   }
 
-  const sendButton = await page.waitForSelector(
-    'div[role="button"][aria-label^="Send"], [aria-label^="Send"], [data-tooltip^="Send"], [command="send"]',
-    { visible: true, timeout: 15000 }
-  )
-  await sendButton.evaluate((element) => {
-    element.scrollIntoView({ block: 'center', inline: 'center' })
-    element.click()
-  })
+  const clickedSendButton = await clickGmailSend(page)
+
+  if (!clickedSendButton) {
+    // Gmail exposes send as Meta+Enter on macOS. This fallback also handles
+    // compose variants where the toolbar button has no stable aria label.
+    await page.keyboard.press('Meta+Enter')
+  }
 
   const composeClosed = await page
     .waitForSelector('input[name="subjectbox"]', {
@@ -239,10 +306,21 @@ async function sendOneEmail(page, payload, row, attachmentPath) {
     .then(() => true)
     .catch(() => false)
 
-  if (!composeClosed) {
-    // Gmail exposes this as ⌘Enter on macOS. It is a safe fallback if the
-    // toolbar click is swallowed by a transient compose overlay.
+  if (!composeClosed && clickedSendButton) {
+    // The toolbar can be visible before Gmail is ready to accept the click.
     await page.keyboard.press('Meta+Enter')
+  }
+
+  const sent = await page
+    .waitForSelector('input[name="subjectbox"]', {
+      hidden: true,
+      timeout: 3000,
+    })
+    .then(() => true)
+    .catch(() => false)
+
+  if (!sent) {
+    throw new Error('Gmail did not close the compose window after Send.')
   }
 
   await wait(800)
