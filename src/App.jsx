@@ -51,6 +51,19 @@ const ATTACHMENT_FORMATS = [
   { value: 'HTML', label: 'HTML', extension: 'html' },
 ]
 
+const PREVIEW_ATTACHMENT_TAGS = {
+  id: 'A7K2M9QX',
+  name: 'Aarav Sharma',
+  email: 'recipient@example.com',
+}
+
+function resolvePreviewAttachmentTags(value) {
+  return String(value || '').replace(/\{\{([^}]+)\}\}/g, (match, key) => {
+    const normalizedKey = String(key).trim().toLowerCase()
+    return PREVIEW_ATTACHMENT_TAGS[normalizedKey] || match
+  })
+}
+
 function stripHtml(html) {
   const documentFragment = new DOMParser().parseFromString(
     String(html || ''),
@@ -185,7 +198,9 @@ async function createPdfFromHtml(html, imageOnly = false) {
 
 async function createAttachmentFromHtml(html, format, requestedName) {
   const option = ATTACHMENT_FORMATS.find((item) => item.value === format)
-  const baseName = attachmentBaseName(requestedName)
+  const baseName = attachmentBaseName(
+    resolvePreviewAttachmentTags(requestedName)
+  )
   const extension = option?.extension || 'html'
   const fileName = `${baseName}.${extension}`
   const plainText = stripHtml(html)
@@ -1534,6 +1549,15 @@ function App() {
                   }
                   placeholder="e.g. monthly-report"
                 />
+                {/\{\{[^}]+\}\}/.test(attachmentFileName) && (
+                  <span className="attachment-template-hint">
+                    Preview: {resolvePreviewAttachmentTags(attachmentFileName)}
+                    .{ATTACHMENT_FORMATS.find(
+                      (format) => format.value === attachmentFormat
+                    )?.extension || 'html'}{' '}
+                    · final filename resolves per recipient when sending
+                  </span>
+                )}
 
                 <label className="field-label" htmlFor="attachment-format">
                   Output format
