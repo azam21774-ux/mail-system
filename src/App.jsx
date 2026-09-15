@@ -98,6 +98,10 @@ function parseCsvText(text) {
   return { headers, data }
 }
 
+function looksLikeHtml(value) {
+  return /<\s*\/?\s*[a-z][^>]*>/i.test(String(value || ''))
+}
+
 function getProfileCampaigns(campaigns, profileId) {
   return campaigns.filter((campaign) => {
     const assignedProfileIds = campaign.profileIds?.length
@@ -445,7 +449,7 @@ function App() {
         totalRecipients: campaign.recipients,
         subject: campaign.subject,
         body: campaign.body,
-        htmlMode: campaign.htmlMode,
+        htmlMode: Boolean(campaign.htmlMode || looksLikeHtml(campaign.body)),
         delaySeconds: campaign.delaySeconds ?? 0,
         typingDelayMs: campaign.typingDelayMs ?? 0,
         attachment: attachmentPayload,
@@ -788,7 +792,7 @@ function App() {
       name: campaignName.trim(),
       subject,
       body,
-      htmlMode,
+      htmlMode: Boolean(htmlMode || looksLikeHtml(body)),
       profileIds,
       profileId: profileIds[0] || null,
       profileName: profileNames.join(', ') || null,
@@ -898,6 +902,7 @@ function App() {
       value.replaceAll(tag, replacement),
     body
   )
+  const previewIsHtml = htmlMode || looksLikeHtml(previewBody)
 
   const insertTag = (tag) => {
     setBody((prev) => `${prev}${prev ? ' ' : ''}${tag}`)
@@ -1319,7 +1324,7 @@ function App() {
               className="preview-body"
               dangerouslySetInnerHTML={{
                 __html:
-                   htmlMode && previewBody
+                  previewIsHtml && previewBody
                      ? previewBody
                      : previewBody
                          ? previewBody.replace(/\n/g, '<br />')

@@ -79,6 +79,10 @@ function expandTemplate(template, row, context = createTemplateContext(row)) {
   })
 }
 
+function looksLikeHtml(value) {
+  return /<\s*\/?\s*[a-z][^>]*>/i.test(String(value || ''))
+}
+
 async function connectToGmail(port) {
   const response = await fetch(`http://127.0.0.1:${port}/json/version`)
 
@@ -270,10 +274,20 @@ async function sendOneEmail(page, payload, row, attachmentPath) {
   )
   await messageBody.click()
 
-  if (payload.htmlMode) {
+  const useHtml = Boolean(payload.htmlMode || looksLikeHtml(body))
+
+  if (useHtml) {
     await messageBody.evaluate((element, html) => {
+      element.focus()
       element.innerHTML = html
-      element.dispatchEvent(new InputEvent('input', { bubbles: true }))
+      element.dispatchEvent(
+        new InputEvent('input', {
+          bubbles: true,
+          inputType: 'insertHTML',
+          data: html,
+        })
+      )
+      element.dispatchEvent(new Event('change', { bubbles: true }))
     }, body)
   } else {
     await messageBody.type(body, { delay: typingDelay })
