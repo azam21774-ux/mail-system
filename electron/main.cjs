@@ -5,6 +5,8 @@ const path = require('path')
 const fs = require('fs')
 const puppeteer = require('puppeteer-core')
 const ExcelJS = require('exceljs')
+const { Document, ImageRun, Packer, Paragraph } = require('docx')
+const PptxGenJS = require('pptxgenjs')
 
 const CHROME_PATH =
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
@@ -218,6 +220,189 @@ async function renderHtmlAsset({ html, type }) {
   } finally {
     if (!renderWindow.isDestroyed()) renderWindow.destroy()
   }
+}
+
+function stripHtmlToText(value) {
+  return String(value || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function attachmentExtension(format) {
+  return (
+    {
+      PDF: 'pdf',
+      WKPDF: 'pdf',
+      PDF_ENCODE: 'pdf',
+      PDF_IMAGE: 'pdf',
+      PDF_IMAGE_PNG: 'pdf',
+      PNG: 'png',
+      JPG: 'jpg',
+      HEIC: 'heic',
+      TXT: 'txt',
+      DOCX: 'docx',
+      XLSX: 'xlsx',
+      PPTX: 'pptx',
+      HTML: 'html',
+    }[format] || 'html'
+  )
+}
+
+function createAttachmentFileName(requestedName, format) {
+  const extension = attachmentExtension(format)
+  const baseName =
+    String(requestedName || 'attachment')
+      .trim()
+      .replace(new RegExp(`\\.${extension}$`, 'i'), '')
+      .replace(/[\\/:*?"<>|]+/g, '-')
+      .replace(/\s+/g, ' ')
+      .trim() || 'attachment'
+
+  return `${path.basename(baseName)}.${extension}`
+}
+
+async function createXlsxImageBuffer(image) {
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('HTML')
+  const width = Math.max(Number(image.width) || 1200, 1)
+  const height = Math.max(Number(image.height) || 900, 1)
+  const imageId = workbook.addImage({
+    buffer: Buffer.from(image.data),
+    extension: 'png',
+  })
+
+  worksheet.views = [{ showGridLines: false }]
+  worksheet.addImage(imageId, {
+    tl: { col: 0, row: 0 },
+    ext: { width, height },
+    editAs: 'oneCell',
+  })
+
+  return workbook.xlsx.writeBuffer()
+}
+
+async function convertPngBufferToHeic(pngData, directory) {
+  if (process.platform !== 'darwin') {
+    throw new Error('HEIC generation requires the macOS Electron app.')
+  }
+
+  const suffix = randomId().toLowerCase()
+  const inputPath = path.join(directory, `attachment-${suffix}.png`)
+  const outputPath = path.join(directory, `attachment-${suffix}.heic`)
+
+  try {
+    fs.writeFileSync(inputPath, Buffer.from(pngData))
+    await runCommand('/usr/bin/sips', [
+      '-s',
+      'format',
+      'heic',
+      inputPath,
+      '--out',
+      outputPath,
+    ])
+    return fs.readFileSync(outputPath)
+  } finally {
+    for (const filePath of [inputPath, outputPath]) {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    }
+  }
+}
+
+async function createTemplatedAttachment(payload, row, directory) {
+  const template = payload.attachmentTemplate
+  const context = createTemplateContext(row)
+  const html = expandTemplate(template.html, row, context)
+  const format = template.format
+  const fileName = createAttachmentFileName(
+    expandTemplate(template.fileName, row, context),
+    format
+  )
+  let data
+
+  if (format === 'HTML') {
+    data = Buffer.from(html, 'utf8')
+  } else if (format === 'TXT') {
+    data = Buffer.from(stripHtmlToText(html), 'utf8')
+  } else if (
+    ['PDF', 'WKPDF', 'PDF_ENCODE', 'PDF_IMAGE', 'PDF_IMAGE_PNG'].includes(
+      format
+    )
+  ) {
+    const rendered = await renderHtmlAsset({ html, type: 'pdf' })
+    if (!rendered.success) throw new Error(rendered.error)
+    data = Buffer.from(rendered.data)
+  } else if (format === 'PNG' || format === 'JPG') {
+    const rendered = await renderHtmlAsset({
+      html,
+      type: format === 'PNG' ? 'png' : 'jpeg',
+    })
+    if (!rendered.success) throw new Error(rendered.error)
+    data = Buffer.from(rendered.data)
+  } else if (format === 'HEIC') {
+    const rendered = await renderHtmlAsset({ html, type: 'png' })
+    if (!rendered.success) throw new Error(rendered.error)
+    data = await convertPngBufferToHeic(rendered.data, directory)
+  } else if (format === 'XLSX') {
+    const rendered = await renderHtmlAsset({ html, type: 'png' })
+    if (!rendered.success) throw new Error(rendered.error)
+    data = await createXlsxImageBuffer(rendered)
+  } else if (format === 'DOCX') {
+    const rendered = await renderHtmlAsset({ html, type: 'png' })
+    if (!rendered.success) throw new Error(rendered.error)
+    const width = Math.min(Number(rendered.width) || 1200, 650)
+    const height =
+      (Number(rendered.height) || 900) *
+      (width / (Number(rendered.width) || 1200))
+    const document = new Document({
+      sections: [
+        {
+          children: [
+            new Paragraph({
+              children: [
+                new ImageRun({
+                  data: Buffer.from(rendered.data),
+                  transformation: { width, height },
+                }),
+              ],
+            }),
+          ],
+        },
+      ],
+    })
+    data = await Packer.toBuffer(document)
+  } else if (format === 'PPTX') {
+    const rendered = await renderHtmlAsset({ html, type: 'png' })
+    if (!rendered.success) throw new Error(rendered.error)
+    const presentation = new PptxGenJS()
+    const slide = presentation.addSlide()
+    const width = Math.min(Number(rendered.width) || 1200, 1200)
+    const height =
+      (Number(rendered.height) || 900) *
+      (width / (Number(rendered.width) || 1200))
+    slide.background = { color: 'FFFFFF' }
+    slide.addImage({
+      data: `data:image/png;base64,${Buffer.from(rendered.data).toString(
+        'base64'
+      )}`,
+      x: 0,
+      y: 0,
+      w: 13.333,
+      h: Math.min(height / width * 13.333, 7.5),
+    })
+    data = await presentation.write({ outputType: 'nodebuffer' })
+  } else {
+    throw new Error(`Unsupported attachment format: ${format}`)
+  }
+
+  const attachmentPath = path.join(directory, fileName)
+  fs.writeFileSync(attachmentPath, Buffer.from(data))
+  return attachmentPath
 }
 
 async function connectToGmail(port) {

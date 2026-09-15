@@ -31,9 +31,7 @@ import {
   HeadingLevel,
   Packer,
   Paragraph,
-  TextRun,
 } from 'docx'
-import * as XLSX from 'xlsx'
 import PptxGenJS from 'pptxgenjs'
 import './App.css'
 
@@ -752,7 +750,20 @@ function App() {
         htmlMode: Boolean(campaign.htmlMode || looksLikeHtml(campaign.body)),
         delaySeconds: campaign.delaySeconds ?? 0,
         typingDelayMs: campaign.typingDelayMs ?? 0,
-        attachment: attachmentPayload,
+        attachment:
+          campaign.attachmentMode === 'html' && campaign.attachmentHtml
+            ? null
+            : attachmentPayload,
+        attachmentTemplate:
+          campaign.attachmentMode === 'html' &&
+          campaign.attachment &&
+          campaign.attachmentHtml
+            ? {
+                html: campaign.attachmentHtml,
+                format: campaign.attachmentFormat || 'PDF',
+                fileName: campaign.attachmentFileName || 'attachment',
+              }
+            : null,
       })
 
       if (!result?.success) {
