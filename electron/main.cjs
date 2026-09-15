@@ -230,6 +230,27 @@ async function captureHtmlScreenshot(
   webContents,
   { width, height, renderScale, type }
 ) {
+  if (process.platform === 'win32') {
+    const image = await webContents.capturePage(
+      {
+        x: 0,
+        y: 0,
+        width: Math.max(Math.ceil(Number(width) || 1), 1),
+        height: Math.max(Math.ceil(Number(height) || 1), 1),
+      },
+      {
+        stayHidden: true,
+      }
+    )
+    const size = image.getSize()
+
+    return {
+      data: image.toPNG(),
+      width: size.width,
+      height: size.height,
+    }
+  }
+
   const debuggerSession = webContents.debugger
   let attachedHere = false
 
@@ -478,7 +499,9 @@ async function renderHtmlAsset({
       renderWindow.webContents.setZoomFactor(1)
       renderWindow.setContentSize(
         displayWidth,
-        Math.max(Math.min(displayHeight, 900), 1)
+        process.platform === 'win32'
+          ? Math.max(Math.min(displayHeight, 12000), 1)
+          : Math.max(Math.min(displayHeight, 900), 1)
       )
       await wait(100)
 
@@ -498,6 +521,9 @@ async function renderHtmlAsset({
         Math.max(Math.ceil(Number(finalContentHeight) || 0), displayHeight),
         12000
       )
+      if (process.platform === 'win32') {
+        renderWindow.setContentSize(displayWidth, finalDisplayHeight)
+      }
       const outputScreenshot = await withTimeout(
         captureHtmlScreenshot(renderWindow.webContents, {
           width: displayWidth,
