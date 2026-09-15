@@ -325,16 +325,20 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
 
   let browser
   let attachmentPath
-  let sent = 0
-  let failed = 0
+  let sent = Number(payload.baseSent) || 0
+  let failed = Number(payload.baseFailed) || 0
+  let processed = 0
   const recipients = Array.isArray(payload.recipients)
     ? payload.recipients
     : []
+  const startIndex = Number(payload.startIndex) || 0
+  const totalRecipients = Number(payload.totalRecipients) || recipients.length
 
   const emitProgress = (progress) => {
     if (!mainWindow || mainWindow.isDestroyed()) return
     mainWindow.webContents.send('campaign-progress', {
       campaignId: payload.campaignId,
+      profileId: payload.profileId,
       ...progress,
     })
   }
@@ -366,7 +370,8 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
           status: 'Paused',
           sent,
           failed,
-          pending: recipients.length - sent - failed,
+          pending: Math.max(totalRecipients - startIndex - processed, 0),
+          nextRecipientIndex: startIndex + processed,
         })
         return { success: false, cancelled: true, sent, failed }
       }
@@ -376,35 +381,43 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
       try {
         await sendOneEmail(connection.page, payload, row, attachmentPath)
         sent += 1
+        processed += 1
         emitProgress({
           status: 'Running',
           sent,
           failed,
-          pending: recipients.length - sent - failed,
+          pending: Math.max(totalRecipients - startIndex - processed, 0),
+          nextRecipientIndex: startIndex + processed,
           recipientEmail: email,
         })
       } catch (error) {
         failed += 1
+        processed += 1
         emitProgress({
           status: 'Running',
           sent,
           failed,
-          pending: recipients.length - sent - failed,
+          pending: Math.max(totalRecipients - startIndex - processed, 0),
+          nextRecipientIndex: startIndex + processed,
           recipientEmail: email,
           error: error.message,
         })
       }
 
-      if (payload.delaySeconds > 0 && sent + failed < recipients.length) {
+      if (payload.delaySeconds > 0 && processed < recipients.length) {
         await wait(Number(payload.delaySeconds) * 1000)
       }
     }
 
     emitProgress({
-      status: failed > 0 && sent === 0 ? 'Failed' : 'Completed',
+      status:
+        failed > (Number(payload.baseFailed) || 0) && sent === (Number(payload.baseSent) || 0)
+          ? 'Failed'
+          : 'Completed',
       sent,
       failed,
-      pending: recipients.length - sent - failed,
+      pending: Math.max(totalRecipients - startIndex - processed, 0),
+      nextRecipientIndex: startIndex + processed,
     })
 
     return { success: true, sent, failed }
@@ -413,7 +426,8 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
       status: 'Failed',
       sent,
       failed,
-      pending: Math.max(recipients.length - sent - failed, 0),
+      pending: Math.max(totalRecipients - startIndex - processed, 0),
+      nextRecipientIndex: startIndex + processed,
       error: error.message,
     })
 

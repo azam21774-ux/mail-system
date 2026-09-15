@@ -676,6 +676,7 @@ function App() {
       delaySeconds: Number(delaySeconds),
       sent: existingCampaign?.sent || 0,
       failed: existingCampaign?.failed || 0,
+      nextRecipientIndex: existingCampaign?.nextRecipientIndex || 0,
       createdAt:
         existingCampaign?.createdAt || new Date().toLocaleString(),
       updatedAt: new Date().toLocaleString(),
