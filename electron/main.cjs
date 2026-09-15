@@ -103,9 +103,17 @@ function looksLikeHtml(value) {
 
 function createStandaloneHtml(source) {
   const html = String(source || '').trim()
+  const rendererResetStyle = `
+    <style id="mail-system-render-reset">
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+    </style>
+  `
 
   if (/<html[\s>]/i.test(html)) {
-    return html
+    return html.replace(/<\/head>/i, `${rendererResetStyle}</head>`)
   }
 
   return `<!doctype html>
@@ -113,6 +121,7 @@ function createStandaloneHtml(source) {
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    ${rendererResetStyle}
   </head>
   <body>${html}</body>
 </html>`
