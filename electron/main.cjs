@@ -113,6 +113,36 @@ async function connectToGmail(port) {
   return { browser, page }
 }
 
+async function waitForAttachmentUpload(page, filePath) {
+  const fileName = path.basename(filePath).toLowerCase()
+
+  await page.waitForFunction(
+    (expectedFileName) => {
+      const visible = (element) => {
+        const style = window.getComputedStyle(element)
+        return (
+          style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          element.getBoundingClientRect().width > 0 &&
+          element.getBoundingClientRect().height > 0
+        )
+      }
+
+      const pageText = String(document.body.innerText || '').toLowerCase()
+      const fileNameVisible = pageText.includes(expectedFileName)
+      const uploadStillRunning = Array.from(
+        document.querySelectorAll(
+          '[role="progressbar"], [aria-label*="Uploading" i], [aria-label*="uploading" i]'
+        )
+      ).some(visible)
+
+      return fileNameVisible && !uploadStillRunning
+    },
+    { timeout: 30000 },
+    fileName
+  )
+}
+
 async function sendOneEmail(page, payload, row, attachmentPath) {
   const email = getRecipientValue(row, 'email')
 
@@ -152,7 +182,9 @@ async function sendOneEmail(page, payload, row, attachmentPath) {
       await fileChooser.accept([attachmentPath])
     }
 
-    await wait(500)
+    // Do not fill recipient, subject, or body until Gmail visibly shows the
+    // uploaded filename and no upload progress indicator remains.
+    await waitForAttachmentUpload(page, attachmentPath)
   }
 
   const recipientInput = await page.waitForSelector(
