@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   LayoutDashboard,
   Users,
@@ -85,6 +85,33 @@ function App() {
     setShowAdd(false)
   }
 
+  const startCampaignsForProfile = (profileId) => {
+    setCampaigns((prev) =>
+      prev.map((campaign) => {
+        const completed =
+          (campaign.sent || 0) + (campaign.failed || 0) >= campaign.recipients
+
+        return campaign.profileId === profileId && !completed
+          ? {
+              ...campaign,
+              status: 'Running',
+              startedAt: campaign.startedAt || new Date().toLocaleString(),
+            }
+          : campaign
+      })
+    )
+  }
+
+  const pauseCampaignsForProfile = (profileId) => {
+    setCampaigns((prev) =>
+      prev.map((campaign) =>
+        campaign.profileId === profileId && campaign.status === 'Running'
+          ? { ...campaign, status: 'Paused' }
+          : campaign
+      )
+    )
+  }
+
   const toggleStart = async (profile) => {
     if (profile.running) {
       setProfiles((prev) =>
@@ -94,6 +121,7 @@ function App() {
             : p
         )
       )
+      pauseCampaignsForProfile(profile.id)
       return
     }
 
@@ -123,6 +151,7 @@ function App() {
             : p
         )
       )
+      startCampaignsForProfile(profile.id)
     }
   }
 
@@ -246,25 +275,33 @@ function App() {
       return
     }
 
+    const existingCampaign = campaigns.find(
+      (item) => item.id === editingCampaignId
+    )
+
     const campaign = {
       id: editingCampaignId || Date.now(),
       name: campaignName.trim(),
       subject,
       body,
       htmlMode,
+      profileId: selectedProfileId ? Number(selectedProfileId) : null,
+      profileName:
+        profiles.find((profile) => String(profile.id) === selectedProfileId)
+          ?.name || null,
       csvFile,
       attachment,
       csvHeaders,
       csvName: csvFile.name,
       attachmentName: attachment?.name || null,
       recipients: recipientCount,
+      delaySeconds: Number(delaySeconds),
+      sent: existingCampaign?.sent || 0,
+      failed: existingCampaign?.failed || 0,
       createdAt:
-        campaigns.find((item) => item.id === editingCampaignId)?.createdAt ||
-        new Date().toLocaleString(),
+        existingCampaign?.createdAt || new Date().toLocaleString(),
       updatedAt: new Date().toLocaleString(),
-      status:
-        campaigns.find((item) => item.id === editingCampaignId)?.status ||
-        'Draft',
+      status: existingCampaign?.status || 'Draft',
     }
 
     setCampaigns((prev) =>
@@ -288,21 +325,66 @@ function App() {
   }
 
   const startCampaign = (campaignId) => {
+    const campaign = campaigns.find((item) => item.id === campaignId)
+    const profile = profiles.find(
+      (item) => item.id === campaign?.profileId
+    )
+
+    if (!campaign?.profileId || !profile) {
+      alert('Select a Chrome profile for this campaign first.')
+      return
+    }
+
+    if (!profile.running) {
+      alert(`Start "${profile.name}" from Profiles first.`)
+      return
+    }
+
     setCampaigns((prev) =>
       prev.map((item) =>
-        item.id === campaignId ? { ...item, status: 'Running' } : item
+        item.id === campaignId
+          ? {
+              ...item,
+              status: 'Running',
+              startedAt: item.startedAt || new Date().toLocaleString(),
+            }
+          : item
       )
     )
   }
 
-  const tagList = [
-    '{{email}}',
-    '{{name}}',
+  const builtInTags = [
+    { tag: '{{email}}', label: 'Email' },
+    { tag: '{{name}}', label: 'Name' },
+    { tag: '{{random_name}}', label: 'Random name' },
+    { tag: '{{spanish_name}}', label: 'Spanish name' },
+    { tag: '{{date}}', label: 'Date' },
+    { tag: '{{id}}', label: 'Random ID' },
+  ]
+
+  const csvTagList = [
     ...csvHeaders
       .filter((header) => header.toLowerCase() !== 'email')
       .slice(0, 8)
       .map((header) => `{{${header}}}`),
   ]
+
+  const previewTagValues = {
+    '{{random_name}}': 'Aarav Sharma',
+    '{{spanish_name}}': 'Lucía García',
+    '{{date}}': new Intl.DateTimeFormat('en-IN', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    }).format(new Date()),
+    '{{id}}': 'A7K2M9QX',
+  }
+
+  const previewBody = Object.entries(previewTagValues).reduce(
+    (value, [tag, replacement]) =>
+      value.replaceAll(tag, replacement),
+    body
+  )
 
   const insertTag = (tag) => {
     setBody((prev) => `${prev}${prev ? ' ' : ''}${tag}`)
@@ -343,6 +425,63 @@ function App() {
               onChange={(e) => setCampaignName(e.target.value)}
               placeholder="e.g. September Newsletter"
             />
+          </div>
+
+          <div className="form-card">
+            <div className="form-card-header">
+              <div>
+                <h3>Run with Profile</h3>
+                <p>Choose which Chrome account will run this campaign.</p>
+              </div>
+            </div>
+
+            <label className="field-label">Chrome Profile</label>
+            <select
+              className="text-input profile-select"
+              value={selectedProfileId}
+              onChange={(e) => setSelectedProfileId(e.target.value)}
+            >
+              <option value="">Select a profile</option>
+              {profiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name} · {profile.running ? 'Running' : profile.status}
+                </option>
+              ))}
+            </select>
+
+            {!profiles.length && (
+              <p className="field-hint">
+                Add a Chrome profile before starting this campaign.
+              </p>
+            )}
+          </div>
+
+          <div className="form-card delay-card">
+            <div className="form-card-header">
+              <div>
+                <h3>Sending Delay</h3>
+                <p>Wait between each recipient to control the send pace.</p>
+              </div>
+              <div className="delay-value">
+                <Clock3 size={15} />
+                <strong>{delaySeconds}s</strong>
+              </div>
+            </div>
+
+            <input
+              className="delay-slider"
+              type="range"
+              min="1"
+              max="60"
+              step="1"
+              value={delaySeconds}
+              onChange={(e) => setDelaySeconds(Number(e.target.value))}
+              aria-label="Delay between emails in seconds"
+            />
+            <div className="delay-scale">
+              <span>1 sec</span>
+              <span>60 sec</span>
+            </div>
           </div>
 
           <div className="form-card">
@@ -526,18 +665,46 @@ function App() {
               </div>
             </div>
 
-            <div className="tag-list">
-              {tagList.map((tag) => (
-                <button
-                  type="button"
-                  className="tag"
-                  key={tag}
-                  onClick={() => insertTag(tag)}
-                >
-                  {tag}
-                </button>
-              ))}
+            <div className="tag-group">
+              <span className="tag-group-label">Built-in personalization</span>
+              <div className="tag-list">
+                {builtInTags.map(({ tag, label }) => (
+                  <button
+                    type="button"
+                    className="tag tag-with-label"
+                    key={tag}
+                    onClick={() => insertTag(tag)}
+                    title={`Insert ${tag}`}
+                  >
+                    <strong>{label}</strong>
+                    <small>{tag}</small>
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {csvTagList.length > 0 && (
+              <div className="tag-group">
+                <span className="tag-group-label">CSV columns</span>
+                <div className="tag-list">
+                  {csvTagList.map((tag) => (
+                    <button
+                      type="button"
+                      className="tag"
+                      key={tag}
+                      onClick={() => insertTag(tag)}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <p className="tag-help">
+              <strong>{'{{id}}'}</strong> creates a unique uppercase
+              letters-and-numbers ID for each recipient when the campaign runs.
+            </p>
           </div>
 
           <div className="campaign-footer">
@@ -577,10 +744,10 @@ function App() {
               className="preview-body"
               dangerouslySetInnerHTML={{
                 __html:
-                  htmlMode && body
-                    ? body
-                    : body
-                        ? body.replace(/\n/g, '<br />')
+                   htmlMode && previewBody
+                     ? previewBody
+                     : previewBody
+                         ? previewBody.replace(/\n/g, '<br />')
                         : '<span class="preview-empty">Your email body will appear here.</span>',
               }}
             />
@@ -594,6 +761,18 @@ function App() {
             <div>
               <span>Attachment</span>
               <strong>{attachment ? '1' : '0'}</strong>
+            </div>
+            <div>
+              <span>Profile</span>
+              <strong>
+                {profiles.find(
+                  (profile) => String(profile.id) === selectedProfileId
+                )?.name || 'Not set'}
+              </strong>
+            </div>
+            <div>
+              <span>Delay</span>
+              <strong>{delaySeconds}s</strong>
             </div>
           </div>
         </div>
@@ -848,6 +1027,23 @@ function App() {
                         <span>Profile ID: #{profile.id}</span>
                         <span>Port: {profile.debugPort || 9222}</span>
                       </div>
+
+                        {campaigns.filter(
+                          (campaign) => campaign.profileId === profile.id
+                        ).length > 0 && (
+                          <div className="profile-campaigns">
+                            <span>Assigned campaigns</span>
+                            <strong>
+                              {campaigns
+                                .filter(
+                                  (campaign) =>
+                                    campaign.profileId === profile.id
+                                )
+                                .map((campaign) => campaign.name)
+                                .join(', ')}
+                            </strong>
+                          </div>
+                        )}
                     </div>
                   </div>
 
@@ -996,6 +1192,18 @@ function App() {
                           {campaign.subject}
                         </p>
 
+                        <p className="campaign-profile">
+                          <Globe size={13} />
+                          {campaign.profileName ||
+                            profiles.find(
+                              (profile) => profile.id === campaign.profileId
+                            )?.name ||
+                            'No profile assigned'}
+                          <span>
+                            · {campaign.delaySeconds || 5}s delay
+                          </span>
+                        </p>
+
                         <div className="campaign-meta">
                           <span>
                             <Users size={13} />
@@ -1014,6 +1222,26 @@ function App() {
                           )}
                         </div>
 
+                        <div className="campaign-progress">
+                          <span>
+                            <strong>{campaign.sent || 0}</strong> sent
+                          </span>
+                          <span>
+                            <strong>
+                              {Math.max(
+                                (campaign.recipients || 0) -
+                                  (campaign.sent || 0) -
+                                  (campaign.failed || 0),
+                                0
+                              )}
+                            </strong>{' '}
+                            pending
+                          </span>
+                          <span>
+                            <strong>{campaign.failed || 0}</strong> failed
+                          </span>
+                        </div>
+
                         <span className="campaign-date">
                           <CalendarDays size={12} />
                           Updated {campaign.updatedAt || campaign.createdAt}
@@ -1028,7 +1256,11 @@ function App() {
                         onClick={() => startCampaign(campaign.id)}
                       >
                         <Play size={15} />
-                        {campaign.status === 'Running' ? 'Running' : 'Start'}
+                        {campaign.status === 'Running'
+                          ? 'Running'
+                          : campaign.status === 'Completed'
+                            ? 'Completed'
+                            : 'Start'}
                       </button>
                       <button
                         type="button"
