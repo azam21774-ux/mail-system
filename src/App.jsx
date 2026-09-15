@@ -184,6 +184,20 @@ function App() {
   const [delaySeconds, setDelaySeconds] = useState(0)
   const activeCampaignRuns = useRef(new Set())
   const campaignsRef = useRef([])
+  const [activityLog, setActivityLog] = useState([
+    {
+      id: 1,
+      type: 'system',
+      title: 'System ready',
+      detail: 'Mail System is ready for automation.',
+      time: 'Just now',
+    },
+  ])
+  const [settings, setSettings] = useState({
+    defaultDelay: 0,
+    confirmBeforeSend: false,
+  })
+  const [settingsSaved, setSettingsSaved] = useState(false)
 
   const menu = [
     { name: 'Dashboard', icon: LayoutDashboard },
@@ -192,6 +206,19 @@ function App() {
     { name: 'Activity Log', icon: Activity },
     { name: 'Settings', icon: Settings },
   ]
+
+  const addActivity = (type, title, detail) => {
+    setActivityLog((previous) => [
+      {
+        id: Date.now() + Math.random(),
+        type,
+        title,
+        detail,
+        time: new Date().toLocaleString(),
+      },
+      ...previous,
+    ].slice(0, 100))
+  }
 
   const addProfile = () => {
     const name = profileName.trim()
