@@ -195,6 +195,7 @@ async function renderHtmlAsset({
   html,
   type,
   targetDisplayWidth = null,
+  targetDisplayHeight = null,
   trimToContent = true,
 }) {
   const renderWindow = new BrowserWindow({
@@ -368,10 +369,11 @@ async function renderHtmlAsset({
         1
       )
       const outputDisplayWidth = targetDisplayWidth
-        ? Math.min(targetDisplayWidth, naturalDisplayWidth)
+        ? targetDisplayWidth
         : naturalDisplayWidth
-      const outputDisplayHeight =
-        naturalDisplayHeight * (outputDisplayWidth / naturalDisplayWidth)
+      const outputDisplayHeight = targetDisplayHeight
+        ? targetDisplayHeight
+        : naturalDisplayHeight * (outputDisplayWidth / naturalDisplayWidth)
 
       return {
         success: true,
@@ -542,7 +544,8 @@ async function createTemplatedAttachment(
     const rendered = await renderHtmlAsset({
       html,
       type: 'png',
-      targetDisplayWidth: 600,
+      targetDisplayWidth: 854,
+      targetDisplayHeight: 2290,
       trimToContent: false,
     })
     if (!rendered.success) throw new Error(rendered.error)
@@ -1101,6 +1104,7 @@ ipcMain.handle('render-html-asset', async (_event, payload) =>
     html: payload?.html,
     type: payload?.type,
     targetDisplayWidth: payload?.targetDisplayWidth,
+    targetDisplayHeight: payload?.targetDisplayHeight,
     trimToContent: payload?.trimToContent !== false,
   })
 )
