@@ -1,0 +1,81 @@
+Mujhe exact bug mil gaya! Do combined issues hain:
+
+Issue #1 (main wajah): Jo hidden render window banti hai (show: false), Windows par uska size baad me code se badla jaata hai (setContentSize) taaki full content fit ho — lekin hidden window Windows par properly repaint/resize nahi hoti (yahi original "hang" wali root cause bhi thi). Isliye screenshot lete waqt window apne purane, chhote size (900px height) tak hi capture hoti hai — content jo uske aage hai, wo crop ho jaata hai.
+
+Issue #2 (chhota sa extra bug): Window resize ke turant baad, bina thoda wait kiye seedha screenshot le liya jaata hai — jisse browser ko naye size ke hisaab se repaint karne ka time hi nahi milta.
+
+Chalo dono fix karte hain:
+
+Perfect. Ab apne Mac par ye fix apply karo.
+
+Fix apply karo (Mac Terminal me)
+
+winm2O folder ke andar ja kar ye Python script chalao:
+
+bash
+cd ~/Downloads/winm2O
+bash
+python3 -c "
+content = open('electron/main.cjs').read()
+
+old1 = '''  const renderWindow = new BrowserWindow({
+    show: false,
+    width: 1200,
+    height: 900,
+    backgroundColor: '#ffffff',
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: true,
+    },
+  })'''
+
+new1 = '''  const renderWindow = new BrowserWindow({
+    show: process.platform === 'win32',
+    x: process.platform === 'win32' ? -3000 : undefined,
+    y: process.platform === 'win32' ? -3000 : undefined,
+    width: 1200,
+    height: 900,
+    backgroundColor: '#ffffff',
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: true,
+    },
+  })'''
+
+assert content.count(old1) == 1, f'match1 count: {content.count(old1)}'
+content = content.replace(old1, new1)
+
+old2 = '''      if (process.platform === 'win32') {
+        renderWindow.setContentSize(displayWidth, finalDisplayHeight)
+      }
+      const outputScreenshot = await withTimeout('''
+
+new2 = '''      if (process.platform === 'win32') {
+        renderWindow.setContentSize(displayWidth, finalDisplayHeight)
+        await wait(150)
+      }
+      const outputScreenshot = await withTimeout('''
+
+assert content.count(old2) == 1, f'match2 count: {content.count(old2)}'
+content = content.replace(old2, new2)
+
+open('electron/main.cjs', 'w').write(content)
+print('OK - both patches applied successfully')
+"
+
+Terminal me "OK - both patches applied successfully" print hona chahiye. Agar koi AssertionError aaye to screenshot bhej dena.
+
+Verify karo:
+
+bash
+grep -n "show: process.platform\|await wait(150)" electron/main.cjs
+
+Do lines dikhni chahiye (jaise upar maine dikhaya).
+
+Push aur rebuild karo
+bash
+git add electron/main.cjs
+git commit -m "Fix XLSX cropping by properly rendering hidden window on Windows"
+git push
+
+Push hote hi build automatically chalu ho jayega (build-windows.yml ke trigger ki wajah se). Actions tab me status dekho, green tick ke baad naya .exe Artifacts se download karke, purana uninstall karke, naya install karke XLSX conversion dobara test karo — is baar crop nahi hona chahiye.

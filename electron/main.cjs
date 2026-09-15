@@ -314,7 +314,9 @@ async function renderHtmlAsset({
   trimToContent = true,
 }) {
   const renderWindow = new BrowserWindow({
-    show: false,
+    show: process.platform === 'win32',
+    x: process.platform === 'win32' ? -3000 : undefined,
+    y: process.platform === 'win32' ? -3000 : undefined,
     width: 1200,
     height: 900,
     backgroundColor: '#ffffff',
@@ -543,6 +545,7 @@ async function renderHtmlAsset({
       )
       if (process.platform === 'win32') {
         renderWindow.setContentSize(displayWidth, finalDisplayHeight)
+        await wait(150)
       }
       const outputScreenshot = await withTimeout(
         captureHtmlScreenshot(renderWindow.webContents, {
