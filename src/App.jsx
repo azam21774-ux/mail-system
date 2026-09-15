@@ -97,6 +97,57 @@ function parseCsvText(text) {
   return { headers, data }
 }
 
+function getProfileCampaigns(campaigns, profileId) {
+  return campaigns.filter((campaign) => {
+    const assignedProfileIds = campaign.profileIds?.length
+      ? campaign.profileIds
+      : campaign.profileId
+        ? [campaign.profileId]
+        : []
+
+    return assignedProfileIds.includes(profileId)
+  })
+}
+
+function ProfileStats({ campaigns, profileId }) {
+  const assignedCampaigns = getProfileCampaigns(campaigns, profileId)
+  const sent = assignedCampaigns.reduce(
+    (total, campaign) => total + (campaign.sent || 0),
+    0
+  )
+  const failed = assignedCampaigns.reduce(
+    (total, campaign) => total + (campaign.failed || 0),
+    0
+  )
+  const pending = assignedCampaigns.reduce(
+    (total, campaign) =>
+      total +
+      Math.max((campaign.recipients || 0) - (campaign.sent || 0) - (campaign.failed || 0), 0),
+    0
+  )
+
+  return (
+    <div className="profile-stats" aria-label="Profile campaign statistics">
+      <div>
+        <span>Campaigns</span>
+        <strong>{assignedCampaigns.length}</strong>
+      </div>
+      <div>
+        <span>Sent</span>
+        <strong>{sent}</strong>
+      </div>
+      <div>
+        <span>Pending</span>
+        <strong>{pending}</strong>
+      </div>
+      <div>
+        <span>Failed</span>
+        <strong>{failed}</strong>
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const [active, setActive] = useState('Dashboard')
 
@@ -1435,25 +1486,21 @@ function App() {
                         <span>Port: {profile.debugPort || 9222}</span>
                       </div>
 
-                        {campaigns.filter((campaign) =>
-                          campaign.profileIds?.length
-                            ? campaign.profileIds.includes(profile.id)
-                            : campaign.profileId === profile.id
-                        ).length > 0 && (
+                        {getProfileCampaigns(campaigns, profile.id).length > 0 && (
                           <div className="profile-campaigns">
                             <span>Assigned campaigns</span>
                             <strong>
-                              {campaigns
-                                .filter((campaign) =>
-                                  campaign.profileIds?.length
-                                    ? campaign.profileIds.includes(profile.id)
-                                    : campaign.profileId === profile.id
-                                )
+                              {getProfileCampaigns(campaigns, profile.id)
                                 .map((campaign) => campaign.name)
                                 .join(', ')}
                             </strong>
                           </div>
                         )}
+
+                      <ProfileStats
+                        campaigns={campaigns}
+                        profileId={profile.id}
+                      />
                     </div>
                   </div>
 

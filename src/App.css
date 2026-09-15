@@ -531,6 +531,37 @@ nav {
   font-size: 10px;
 }
 
+.profile-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(70px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.profile-stats > div {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #ececef;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.profile-stats span,
+.profile-stats strong {
+  display: block;
+}
+
+.profile-stats span {
+  margin-bottom: 3px;
+  color: #9b9ea6;
+  font-size: 9px;
+}
+
+.profile-stats strong {
+  color: #2a2d33;
+  font-size: 13px;
+}
+
 .profile-status {
   display: inline-flex;
   align-items: center;
@@ -792,6 +823,10 @@ nav {
   .profile-actions .start-btn,
   .profile-actions .stop-btn {
     flex: 1;
+  }
+
+  .profile-stats {
+    width: 100%;
   }
 
   .page-title-row {
