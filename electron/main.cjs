@@ -544,7 +544,6 @@ async function createTemplatedAttachment(
     const rendered = await renderHtmlAsset({
       html,
       type: 'png',
-      targetDisplayWidth: 854,
       trimToContent: true,
     })
     if (!rendered.success) throw new Error(rendered.error)
