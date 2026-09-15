@@ -1199,7 +1199,7 @@ function App() {
                 className="primary-btn"
                 onClick={() => {
                   setActive('Profiles')
-                  setShowAdd(true)
+                  openAddProfile()
                 }}
               >
                 <Plus size={18} />
@@ -1261,7 +1261,7 @@ function App() {
                     className="action-card"
                     onClick={() => {
                       setActive('Profiles')
-                      setShowAdd(true)
+                      openAddProfile()
                     }}
                   >
                     <div className="action-icon">
@@ -1339,7 +1339,7 @@ function App() {
 
               <button
                 className="primary-btn"
-                onClick={() => setShowAdd(true)}
+                onClick={openAddProfile}
               >
                 <Plus size={18} />
                 Add Profile
@@ -1424,9 +1424,44 @@ function App() {
                       )}
                     </button>
 
-                    <button className="icon-btn">
-                      <MoreVertical size={17} />
-                    </button>
+                    <div className="profile-menu-wrap">
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        aria-label={`Actions for ${profile.name}`}
+                        aria-expanded={openProfileMenuId === profile.id}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setOpenProfileMenuId((currentId) =>
+                            currentId === profile.id ? null : profile.id
+                          )
+                        }}
+                      >
+                        <MoreVertical size={17} />
+                      </button>
+
+                      {openProfileMenuId === profile.id && (
+                        <div className="profile-menu" role="menu">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => openRenameProfile(profile)}
+                          >
+                            <Pencil size={14} />
+                            Rename profile
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="danger"
+                            onClick={() => deleteProfile(profile)}
+                          >
+                            <Trash2 size={14} />
+                            Delete profile
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1445,10 +1480,15 @@ function App() {
                     <Globe size={24} />
                   </div>
 
-                  <h2>Add Chrome Profile</h2>
+                  <h2>
+                    {editingProfileId !== null
+                      ? 'Rename Chrome Profile'
+                      : 'Add Chrome Profile'}
+                  </h2>
                   <p>
-                    Give this browser profile a name. You can then open it and
-                    login manually.
+                    {editingProfileId !== null
+                      ? 'Update the name used to identify this browser profile.'
+                      : 'Give this browser profile a name. You can then open it and login manually.'}
                   </p>
 
                   <label>Profile Name</label>
@@ -1465,14 +1505,23 @@ function App() {
                   <div className="modal-actions">
                     <button
                       className="secondary-btn"
-                      onClick={() => setShowAdd(false)}
+                      onClick={() => {
+                        setShowAdd(false)
+                        setEditingProfileId(null)
+                      }}
                     >
                       Cancel
                     </button>
 
                     <button className="primary-btn" onClick={addProfile}>
-                      <Plus size={17} />
-                      Create Profile
+                      {editingProfileId !== null ? (
+                        <Pencil size={17} />
+                      ) : (
+                        <Plus size={17} />
+                      )}
+                      {editingProfileId !== null
+                        ? 'Save Name'
+                        : 'Create Profile'}
                     </button>
                   </div>
                 </div>
