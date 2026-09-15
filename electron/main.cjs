@@ -325,6 +325,7 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
 
   let browser
   let attachmentPath
+  let attachmentDirectory
   let sent = Number(payload.baseSent) || 0
   let failed = Number(payload.baseFailed) || 0
   let processed = 0
@@ -349,12 +350,15 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
     }
 
     if (payload.attachment?.data) {
-      attachmentPath = path.join(
-        app.getPath('temp'),
-        `mail-system-${Date.now()}-${path.basename(
-          payload.attachment.name || 'attachment'
-        )}`
+      // Keep the uploaded file's original basename so Gmail displays the
+      // filename the user selected. Isolation comes from the unique temp
+      // directory, not from changing the visible filename.
+      attachmentDirectory = fs.mkdtempSync(
+        path.join(app.getPath('temp'), 'mail-system-')
       )
+      const originalName =
+        path.basename(payload.attachment.name || 'attachment') || 'attachment'
+      attachmentPath = path.join(attachmentDirectory, originalName)
       fs.writeFileSync(
         attachmentPath,
         Buffer.from(new Uint8Array(payload.attachment.data))
@@ -437,6 +441,9 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
     if (browser) browser.disconnect()
     if (attachmentPath && fs.existsSync(attachmentPath)) {
       fs.unlinkSync(attachmentPath)
+    }
+    if (attachmentDirectory && fs.existsSync(attachmentDirectory)) {
+      fs.rmdirSync(attachmentDirectory)
     }
   }
 })
