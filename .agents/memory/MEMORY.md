@@ -1,0 +1,1 @@
+- [External npm lockfiles](external-npm-lockfiles.md) — keep package-lock resolved URLs on the public npm registry when installs must work outside Replit.
