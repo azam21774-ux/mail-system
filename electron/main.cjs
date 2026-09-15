@@ -157,6 +157,7 @@ async function sendOneEmail(page, payload, row, attachmentPath) {
   const context = createTemplateContext(row)
   const expandedSubject = expandTemplate(payload.subject, row, context)
   const body = expandTemplate(payload.body, row, context)
+  const typingDelay = Math.max(Number(payload.typingDelayMs) || 0, 0)
   const composeButton = await page.waitForSelector(
     '[gh="cm"], [aria-label="Compose"], [role="button"][aria-label="Compose"]',
     { visible: true, timeout: 15000 }
@@ -196,7 +197,7 @@ async function sendOneEmail(page, payload, row, attachmentPath) {
     { visible: true, timeout: 15000 }
   )
   await recipientInput.click()
-  await recipientInput.type(email)
+  await recipientInput.type(email, { delay: typingDelay })
   await page.keyboard.press('Enter')
 
   const subjectInput = await page.waitForSelector('input[name="subjectbox"]', {
@@ -204,7 +205,7 @@ async function sendOneEmail(page, payload, row, attachmentPath) {
     timeout: 15000,
   })
   await subjectInput.click()
-  await subjectInput.type(expandedSubject)
+  await subjectInput.type(expandedSubject, { delay: typingDelay })
 
   const messageBody = await page.waitForSelector(
     '[aria-label="Message Body"][contenteditable="true"], div[role="textbox"][contenteditable="true"]',
@@ -218,7 +219,7 @@ async function sendOneEmail(page, payload, row, attachmentPath) {
       element.dispatchEvent(new InputEvent('input', { bubbles: true }))
     }, body)
   } else {
-    await messageBody.type(body)
+    await messageBody.type(body, { delay: typingDelay })
   }
 
   const sendButton = await page.waitForSelector(

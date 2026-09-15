@@ -22,6 +22,7 @@ import {
   Trash2,
   CalendarDays,
   Clock3,
+  Keyboard,
 } from 'lucide-react'
 import './App.css'
 
@@ -182,6 +183,7 @@ function App() {
   const [csvHeaders, setCsvHeaders] = useState([])
   const [csvRows, setCsvRows] = useState([])
   const [delaySeconds, setDelaySeconds] = useState(0)
+  const [typingDelayMs, setTypingDelayMs] = useState(0)
   const activeCampaignRuns = useRef(new Set())
   const campaignsRef = useRef([])
   const [activityLog, setActivityLog] = useState([
@@ -445,6 +447,7 @@ function App() {
         body: campaign.body,
         htmlMode: campaign.htmlMode,
         delaySeconds: campaign.delaySeconds ?? 0,
+        typingDelayMs: campaign.typingDelayMs ?? 0,
         attachment: attachmentPayload,
       })
 
@@ -683,6 +686,7 @@ function App() {
     setCsvHeaders([])
     setCsvRows([])
     setDelaySeconds(settings.defaultDelay ?? 0)
+    setTypingDelayMs(0)
   }
 
   const openCampaignCreator = () => {
@@ -719,6 +723,7 @@ function App() {
     setCsvHeaders(campaign.csvHeaders || [])
     setCsvRows(campaign.recipientRows || [])
     setDelaySeconds(campaign.delaySeconds ?? 0)
+    setTypingDelayMs(campaign.typingDelayMs ?? 0)
     setEditingCampaignId(campaign.id)
     setActive('Campaigns')
     setShowCreateCampaign(true)
@@ -795,6 +800,7 @@ function App() {
       attachmentName: attachment?.name || null,
       recipients: recipientCount,
       delaySeconds: Number(delaySeconds),
+      typingDelayMs: Number(typingDelayMs),
       sent: existingCampaign?.sent || 0,
       failed: existingCampaign?.failed || 0,
       nextRecipientIndex: existingCampaign?.nextRecipientIndex || 0,
@@ -1015,6 +1021,41 @@ function App() {
             <div className="delay-scale">
               <span>0 sec</span>
               <span>60 sec</span>
+            </div>
+          </div>
+
+          <div className="form-card delay-card">
+            <div className="form-card-header">
+              <div>
+                <h3>Typing Delay</h3>
+                <p>Add a pause between each typed character in Gmail.</p>
+              </div>
+              <div className="delay-value">
+                <Keyboard size={15} />
+                <strong>{typingDelayMs}ms</strong>
+              </div>
+            </div>
+
+            <input
+              className="delay-slider"
+              type="range"
+              min="0"
+              max="250"
+              step="10"
+              value={typingDelayMs}
+              style={{
+                background: `linear-gradient(to right, #24272d 0%, #24272d ${
+                  (Number(typingDelayMs) / 250) * 100
+                }%, #e5e7eb ${
+                  (Number(typingDelayMs) / 250) * 100
+                }%, #e5e7eb 100%)`,
+              }}
+              onChange={(e) => setTypingDelayMs(Number(e.target.value))}
+              aria-label="Typing delay in milliseconds"
+            />
+            <div className="delay-scale">
+              <span>0 ms</span>
+              <span>250 ms</span>
             </div>
           </div>
 
