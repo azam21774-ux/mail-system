@@ -132,6 +132,7 @@ function App() {
   const [csvRows, setCsvRows] = useState([])
   const [delaySeconds, setDelaySeconds] = useState(0)
   const activeCampaignRuns = useRef(new Set())
+  const campaignsRef = useRef([])
 
   const menu = [
     { name: 'Dashboard', icon: LayoutDashboard },
@@ -294,6 +295,21 @@ function App() {
       return
     }
 
+    const campaignComplete =
+      campaign.recipients > 0 &&
+      (campaign.sent || 0) + (campaign.failed || 0) >= campaign.recipients
+    const startIndex = campaignComplete
+      ? 0
+      : Number(campaign.nextRecipientIndex ?? campaign.sent ?? 0)
+    const baseSent = campaignComplete ? 0 : campaign.sent || 0
+    const baseFailed = campaignComplete ? 0 : campaign.failed || 0
+    const recipientRows = campaign.recipientRows.slice(startIndex)
+
+    if (!recipientRows.length) {
+      alert('There are no pending recipients in this campaign.')
+      return
+    }
+
     activeCampaignRuns.current.add(campaign.id)
 
     setCampaigns((prev) =>
@@ -327,7 +343,11 @@ function App() {
         campaignId: campaign.id,
         profileId: profile.id,
         port: profile.debugPort || 9222,
-        recipients: campaign.recipientRows,
+        recipients: recipientRows,
+        startIndex,
+        baseSent,
+        baseFailed,
+        totalRecipients: campaign.recipients,
         subject: campaign.subject,
         body: campaign.body,
         htmlMode: campaign.htmlMode,
@@ -359,7 +379,7 @@ function App() {
     }
   }
 
-  const runAssignedCampaignsForProfile = (profile) => {
+  const runAssignedCampaignsForProfile = (profile, restartCompleted = false) => {
     campaigns
       .filter((campaign) => {
         const assignedProfileIds = campaign.profileIds?.length
@@ -370,7 +390,7 @@ function App() {
 
         return (
           assignedProfileIds.includes(profile.id) &&
-          campaign.status !== 'Completed' &&
+          (restartCompleted || campaign.status !== 'Completed') &&
           !activeCampaignRuns.current.has(campaign.id)
         )
       })
@@ -434,34 +454,72 @@ function App() {
         )
       )
       startCampaignsForProfile(profile.id)
-      runAssignedCampaignsForProfile(profile)
+      runAssignedCampaignsForProfile(profile, true)
     }
   }
 
   useEffect(() => {
+    campaignsRef.current = campaigns
+  }, [campaigns])
+
+  useEffect(() => {
     const unsubscribe = window.electronAPI?.onCampaignProgress?.((progress) => {
-      setCampaigns((prev) =>
-        prev.map((campaign) =>
-          campaign.id === progress.campaignId
-            ? {
-                ...campaign,
-                status: progress.status || campaign.status,
-                sent: progress.sent ?? campaign.sent ?? 0,
-                failed: progress.failed ?? campaign.failed ?? 0,
-                pending:
-                  progress.pending ??
-                  Math.max(
-                    (campaign.recipients || 0) -
-                      (progress.sent ?? campaign.sent ?? 0) -
-                      (progress.failed ?? campaign.failed ?? 0),
-                    0
-                  ),
-                lastRecipient: progress.recipientEmail || campaign.lastRecipient,
-                lastError: progress.error || campaign.lastError,
-              }
-            : campaign
-        )
+      const updatedCampaigns = campaignsRef.current.map((campaign) =>
+        campaign.id === progress.campaignId
+          ? {
+              ...campaign,
+              status: progress.status || campaign.status,
+              sent: progress.sent ?? campaign.sent ?? 0,
+              failed: progress.failed ?? campaign.failed ?? 0,
+              pending:
+                progress.pending ??
+                Math.max(
+                  (campaign.recipients || 0) -
+                    (progress.sent ?? campaign.sent ?? 0) -
+                    (progress.failed ?? campaign.failed ?? 0),
+                  0
+                ),
+              nextRecipientIndex:
+                progress.nextRecipientIndex ??
+                campaign.nextRecipientIndex ??
+                0,
+              lastRecipient: progress.recipientEmail || campaign.lastRecipient,
+              lastError: progress.error || campaign.lastError,
+            }
+          : campaign
       )
+
+      campaignsRef.current = updatedCampaigns
+      setCampaigns(updatedCampaigns)
+
+      if (
+        ['Completed', 'Failed'].includes(progress.status) &&
+        progress.profileId !== undefined
+      ) {
+        const profileId = Number(progress.profileId)
+        const anotherCampaignIsRunning = updatedCampaigns.some((campaign) => {
+          const assignedProfileIds = campaign.profileIds?.length
+            ? campaign.profileIds
+            : campaign.profileId
+              ? [campaign.profileId]
+              : []
+
+          return (
+            assignedProfileIds.includes(profileId) &&
+            campaign.status === 'Running'
+          )
+        })
+
+        if (!anotherCampaignIsRunning) {
+          setProfiles((prev) =>
+            prev.map((profile) =>
+              profile.id === profileId
+                ? { ...profile, running: false, status: 'online' }
+                : profile
+            )
+          )
+        }
+      }
     })
 
     return () => unsubscribe?.()
