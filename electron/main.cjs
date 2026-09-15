@@ -127,6 +127,70 @@ function createStandaloneHtml(source) {
 </html>`
 }
 
+function trimScreenshotToContent(screenshot, renderScale) {
+  const size = screenshot.getSize()
+  const bitmap = screenshot.getBitmap()
+
+  if (!size.width || !size.height || !bitmap?.length) {
+    return {
+      image: screenshot,
+      width: size.width,
+      height: size.height,
+    }
+  }
+
+  const background = [bitmap[0], bitmap[1], bitmap[2], bitmap[3]]
+  const threshold = 12
+  const isContentPixel = (offset) =>
+    Math.max(
+      Math.abs(bitmap[offset] - background[0]),
+      Math.abs(bitmap[offset + 1] - background[1]),
+      Math.abs(bitmap[offset + 2] - background[2]),
+      Math.abs(bitmap[offset + 3] - background[3])
+    ) > threshold
+
+  let left = size.width
+  let top = size.height
+  let right = -1
+  let bottom = -1
+
+  for (let y = 0; y < size.height; y += 1) {
+    for (let x = 0; x < size.width; x += 1) {
+      const offset = (y * size.width + x) * 4
+      if (!isContentPixel(offset)) continue
+      left = Math.min(left, x)
+      top = Math.min(top, y)
+      right = Math.max(right, x)
+      bottom = Math.max(bottom, y)
+    }
+  }
+
+  if (right < left || bottom < top) {
+    return {
+      image: screenshot,
+      width: size.width,
+      height: size.height,
+    }
+  }
+
+  const padding = Math.max(Math.round(renderScale), 1)
+  const cropX = Math.max(left - padding, 0)
+  const cropY = Math.max(top - padding, 0)
+  const cropRight = Math.min(right + padding + 1, size.width)
+  const cropBottom = Math.min(bottom + padding + 1, size.height)
+
+  return {
+    image: screenshot.crop({
+      x: cropX,
+      y: cropY,
+      width: cropRight - cropX,
+      height: cropBottom - cropY,
+    }),
+    width: cropRight - cropX,
+    height: cropBottom - cropY,
+  }
+}
+
 async function renderHtmlAsset({ html, type }) {
   const renderWindow = new BrowserWindow({
     show: false,
@@ -263,18 +327,28 @@ async function renderHtmlAsset({ html, type }) {
         width,
         height,
       })
+      const trimmedScreenshot = trimScreenshotToContent(
+        screenshot,
+        renderScale
+      )
 
       return {
         success: true,
         data:
           type === 'png'
-            ? screenshot.toPNG()
-            : screenshot.toJPEG(92),
+            ? trimmedScreenshot.image.toPNG()
+            : trimmedScreenshot.image.toJPEG(98),
         mimeType: type === 'png' ? 'image/png' : 'image/jpeg',
-        width,
-        height,
-        displayWidth,
-        displayHeight,
+        width: trimmedScreenshot.width,
+        height: trimmedScreenshot.height,
+        displayWidth: Math.max(
+          Math.ceil(trimmedScreenshot.width / renderScale),
+          1
+        ),
+        displayHeight: Math.max(
+          Math.ceil(trimmedScreenshot.height / renderScale),
+          1
+        ),
       }
     }
 
