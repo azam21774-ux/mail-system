@@ -226,31 +226,34 @@ function cropScreenshotToHtmlBounds(screenshot, dimensions, renderScale) {
   }
 }
 
+async function captureNativeHtmlScreenshot(
+  webContents,
+  { width, height, type }
+) {
+  const image = await webContents.capturePage(
+    {
+      x: 0,
+      y: 0,
+      width: Math.max(Math.ceil(Number(width) || 1), 1),
+      height: Math.max(Math.ceil(Number(height) || 1), 1),
+    },
+    {
+      stayHidden: true,
+    }
+  )
+  const size = image.getSize()
+
+  return {
+    data: type === 'jpeg' ? image.toJPEG(98) : image.toPNG(),
+    width: size.width,
+    height: size.height,
+  }
+}
+
 async function captureHtmlScreenshot(
   webContents,
   { width, height, renderScale, type }
 ) {
-  if (process.platform === 'win32') {
-    const image = await webContents.capturePage(
-      {
-        x: 0,
-        y: 0,
-        width: Math.max(Math.ceil(Number(width) || 1), 1),
-        height: Math.max(Math.ceil(Number(height) || 1), 1),
-      },
-      {
-        stayHidden: true,
-      }
-    )
-    const size = image.getSize()
-
-    return {
-      data: image.toPNG(),
-      width: size.width,
-      height: size.height,
-    }
-  }
-
   const debuggerSession = webContents.debugger
   let attachedHere = false
 
@@ -260,25 +263,42 @@ async function captureHtmlScreenshot(
       attachedHere = true
     }
 
-    const result = await debuggerSession.sendCommand('Page.captureScreenshot', {
-      format: type === 'jpeg' ? 'jpeg' : 'png',
-      ...(type === 'jpeg' ? { quality: 98 } : {}),
-      fromSurface: true,
-      captureBeyondViewport: true,
-      clip: {
-        x: 0,
-        y: 0,
-        width: Math.max(Number(width) || 1, 1),
-        height: Math.max(Number(height) || 1, 1),
-        scale: renderScale,
-      },
-    })
+    const result = await withTimeout(
+      debuggerSession.sendCommand('Page.captureScreenshot', {
+        format: type === 'jpeg' ? 'jpeg' : 'png',
+        ...(type === 'jpeg' ? { quality: 98 } : {}),
+        fromSurface: true,
+        captureBeyondViewport: true,
+        clip: {
+          x: 0,
+          y: 0,
+          width: Math.max(Number(width) || 1, 1),
+          height: Math.max(Number(height) || 1, 1),
+          scale: renderScale,
+        },
+      }),
+      12000,
+      'Chromium screenshot capture timed out.'
+    )
 
     return {
       data: Buffer.from(result.data, 'base64'),
       width: Math.max(Math.ceil(Number(width) || 1), 1) * renderScale,
       height: Math.max(Math.ceil(Number(height) || 1), 1) * renderScale,
     }
+  } catch (error) {
+    if (process.platform !== 'win32') throw error
+
+    if (attachedHere && debuggerSession.isAttached()) {
+      debuggerSession.detach()
+      attachedHere = false
+    }
+
+    return captureNativeHtmlScreenshot(webContents, {
+      width,
+      height,
+      type,
+    })
   } finally {
     if (attachedHere && debuggerSession.isAttached()) {
       debuggerSession.detach()
