@@ -1,0 +1,196 @@
+Mac par project run karne ke liye ye steps follow karo.
+
+## 1. Required software install karo
+
+Mac me ye installed hona chahiye:
+
+- **Node.js 20+ LTS**
+- **Google Chrome**
+- **Git** — agar project GitHub se clone karoge
+
+Node check karne ke liye:
+
+```bash
+node -v
+npm -v
+```
+
+Agar Node installed nahi hai, Node.js ki LTS version install karo.
+
+## 2. Project Mac par lao
+
+Agar project GitHub par hai:
+
+```bash
+git clone YOUR_PROJECT_URL
+cd mail-system
+```
+
+Agar ZIP download kiya hai:
+
+1. ZIP extract karo
+2. Terminal open karo
+3. Project folder me jao:
+
+```bash
+cd /path/to/mail-system
+```
+
+Example:
+
+```bash
+cd ~/Downloads/mail-system
+```
+
+## 3. Dependencies install karo
+
+Project folder ke andar run karo:
+
+```bash
+npm ci
+```
+
+Agar `npm ci` lockfile ki wajah se error de, to:
+
+```bash
+npm install
+```
+
+## 4. App start karo
+
+Development mode me app run karne ke liye:
+
+```bash
+npm run dev
+```
+
+Is command se:
+
+- Vite server start hoga
+- Electron app open hogi
+- React UI Electron window me load hogi
+
+Important: `npm start` akela use mat karna, kyunki development me Vite server bhi required hai. Is project ke liye main command:
+
+```bash
+npm run dev
+```
+
+## 5. Chrome profile setup
+
+Electron app open hone ke baad:
+
+1. **Profiles** section me jao
+2. **Add Profile** click karo
+3. Profile ka naam do
+4. **Open** click karo
+5. Chrome window me Gmail login karo
+6. Wapas app me aakar **Start** click karo
+
+Project Mac ke default Chrome path ko use karta hai:
+
+```text
+/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+```
+
+Ye normal Google Chrome installation ka standard Mac path hai.
+
+## 6. Campaign create karke run karo
+
+CSV file me kam se kam `email` column hona chahiye:
+
+```csv
+email,name
+test@example.com,Test User
+another@example.com,Another User
+```
+
+Phir:
+
+1. **Campaigns** section open karo
+2. Campaign name enter karo
+3. CSV upload karo
+4. Chrome profile select karo
+5. Optional attachment upload karo
+6. Subject enter karo
+7. Email body enter karo
+8. Delay set karo — default `0 seconds`
+9. **Save Campaign** click karo
+10. Profile running hone ke baad campaign ka **Start** click karo
+
+Sender workflow:
+
+```text
+Compose
+→ Attachment upload
+→ To email fill
+→ Subject fill
+→ Email body fill
+→ Send
+→ Delay
+→ Next CSV row
+```
+
+## 7. Personalization tags
+
+Body ya subject me ye tags use kar sakte ho:
+
+```text
+{{email}}
+{{name}}
+{{random_name}}
+{{spanish_name}}
+{{date}}
+{{id}}
+```
+
+CSV ke custom columns bhi use ho sakte hain, jaise:
+
+```text
+{{company}}
+{{city}}
+```
+
+## 8. App band karna
+
+Terminal window me:
+
+```bash
+Ctrl + C
+```
+
+Agar Electron window close kar doge, Vite process terminal me chal sakta hai, isliye terminal me `Ctrl + C` zaroor press karna.
+
+## Common problems
+
+### `npm: command not found`
+
+Node.js install nahi hai ya PATH configure nahi hua. Node.js LTS install karke Terminal restart karo.
+
+### Chrome profile start nahi hota
+
+Pehle **Open** click karo, Gmail login karo, phir **Start** click karo.
+
+### Chrome not found error
+
+Check karo ki Chrome yahan installed hai:
+
+```text
+/Applications/Google Chrome.app
+```
+
+### Port already in use
+
+Agar `5173` ya Chrome debugging port busy ho, app close karke dobara run karo:
+
+```bash
+npm run dev
+```
+
+Is project ko Mac par chalane ke liye final main command ye hai:
+
+```bash
+cd /path/to/mail-system
+npm ci
+npm run dev
+```
