@@ -47,7 +47,7 @@ function App() {
   const [editingCampaignId, setEditingCampaignId] = useState(null)
 
   const [campaignName, setCampaignName] = useState('')
-  const [selectedProfileId, setSelectedProfileId] = useState('')
+  const [selectedProfileIds, setSelectedProfileIds] = useState([])
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [htmlMode, setHtmlMode] = useState(false)
@@ -90,8 +90,13 @@ function App() {
       prev.map((campaign) => {
         const completed =
           (campaign.sent || 0) + (campaign.failed || 0) >= campaign.recipients
+        const assignedProfileIds = campaign.profileIds?.length
+          ? campaign.profileIds
+          : campaign.profileId
+            ? [campaign.profileId]
+            : []
 
-        return campaign.profileId === profileId && !completed
+        return assignedProfileIds.includes(profileId) && !completed
           ? {
               ...campaign,
               status: 'Running',
@@ -104,11 +109,26 @@ function App() {
 
   const pauseCampaignsForProfile = (profileId) => {
     setCampaigns((prev) =>
-      prev.map((campaign) =>
-        campaign.profileId === profileId && campaign.status === 'Running'
+      prev.map((campaign) => {
+        const assignedProfileIds = campaign.profileIds?.length
+          ? campaign.profileIds
+          : campaign.profileId
+            ? [campaign.profileId]
+            : []
+        const anotherProfileIsRunning = assignedProfileIds.some(
+          (assignedId) =>
+            assignedId !== profileId &&
+            profiles.some(
+              (profile) => profile.id === assignedId && profile.running
+            )
+        )
+
+        return assignedProfileIds.includes(profileId) &&
+          campaign.status === 'Running' &&
+          !anotherProfileIsRunning
           ? { ...campaign, status: 'Paused' }
           : campaign
-      )
+      })
     )
   }
 
@@ -182,7 +202,7 @@ function App() {
 
   const resetCampaignForm = () => {
     setCampaignName('')
-    setSelectedProfileId(String(profiles[0]?.id || ''))
+    setSelectedProfileIds(profiles[0] ? [String(profiles[0].id)] : [])
     setSubject('')
     setBody('')
     setHtmlMode(false)
@@ -190,7 +210,7 @@ function App() {
     setAttachment(null)
     setRecipientCount(0)
     setCsvHeaders([])
-    setDelaySeconds(5)
+    setDelaySeconds(0)
   }
 
   const openCampaignCreator = () => {
@@ -201,7 +221,13 @@ function App() {
 
   const openCampaignEditor = (campaign) => {
     setCampaignName(campaign.name)
-    setSelectedProfileId(String(campaign.profileId || ''))
+    setSelectedProfileIds(
+      campaign.profileIds?.length
+        ? campaign.profileIds.map(String)
+        : campaign.profileId
+          ? [String(campaign.profileId)]
+          : []
+    )
     setSubject(campaign.subject)
     setBody(campaign.body)
     setHtmlMode(campaign.htmlMode)
@@ -219,7 +245,7 @@ function App() {
     )
     setRecipientCount(campaign.recipients)
     setCsvHeaders(campaign.csvHeaders || [])
-    setDelaySeconds(campaign.delaySeconds || 5)
+    setDelaySeconds(campaign.delaySeconds ?? 0)
     setEditingCampaignId(campaign.id)
     setActive('Campaigns')
     setShowCreateCampaign(true)
@@ -279,16 +305,20 @@ function App() {
       (item) => item.id === editingCampaignId
     )
 
+    const profileIds = selectedProfileIds.map(Number).filter(Boolean)
+    const profileNames = profiles
+      .filter((profile) => profileIds.includes(profile.id))
+      .map((profile) => profile.name)
+
     const campaign = {
       id: editingCampaignId || Date.now(),
       name: campaignName.trim(),
       subject,
       body,
       htmlMode,
-      profileId: selectedProfileId ? Number(selectedProfileId) : null,
-      profileName:
-        profiles.find((profile) => String(profile.id) === selectedProfileId)
-          ?.name || null,
+      profileIds,
+      profileId: profileIds[0] || null,
+      profileName: profileNames.join(', ') || null,
       csvFile,
       attachment,
       csvHeaders,
@@ -326,17 +356,23 @@ function App() {
 
   const startCampaign = (campaignId) => {
     const campaign = campaigns.find((item) => item.id === campaignId)
-    const profile = profiles.find(
-      (item) => item.id === campaign?.profileId
+    const assignedProfileIds = campaign?.profileIds?.length
+      ? campaign.profileIds
+      : campaign?.profileId
+        ? [campaign.profileId]
+        : []
+    const runningProfiles = profiles.filter(
+      (profile) =>
+        assignedProfileIds.includes(profile.id) && profile.running
     )
 
-    if (!campaign?.profileId || !profile) {
-      alert('Select a Chrome profile for this campaign first.')
+    if (!assignedProfileIds.length) {
+      alert('Select at least one Chrome profile for this campaign first.')
       return
     }
 
-    if (!profile.running) {
-      alert(`Start "${profile.name}" from Profiles first.`)
+    if (!runningProfiles.length) {
+      alert('Start at least one assigned Chrome profile from Profiles first.')
       return
     }
 
