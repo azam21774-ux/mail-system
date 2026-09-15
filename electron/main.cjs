@@ -545,8 +545,7 @@ async function createTemplatedAttachment(
       html,
       type: 'png',
       targetDisplayWidth: 854,
-      targetDisplayHeight: 2290,
-      trimToContent: false,
+      trimToContent: true,
     })
     if (!rendered.success) throw new Error(rendered.error)
     data = await createXlsxImageBuffer(rendered)

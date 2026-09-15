@@ -289,8 +289,7 @@ async function createAttachmentFromHtml(html, format, requestedName) {
   if (format === 'XLSX') {
     const renderedImage = await renderHtmlWithElectron(html, 'png', {
       targetDisplayWidth: 854,
-      targetDisplayHeight: 2290,
-      trimToContent: false,
+      trimToContent: true,
     })
     if (!renderedImage) {
       throw new Error(
