@@ -516,6 +516,7 @@ function App() {
       debugPort: 9222,
     },
   ])
+  const [senderRows, setSenderRows] = useState([])
 
   const [showAdd, setShowAdd] = useState(false)
   const [profileName, setProfileName] = useState('')
@@ -1051,6 +1052,37 @@ function App() {
     addActivity('profile', 'Profile opened', `${profile.name} was opened.`)
   }
 
+  const handleNewSenderRow = () => {
+    const nextProfileId =
+      profiles.reduce((highest, profile) => Math.max(highest, profile.id), 0) + 1
+    const nextRowNumber = senderRows.length + 2
+    const newProfile = {
+      id: nextProfileId,
+      name: `Chrome Profile ${nextProfileId}`,
+      status: 'offline',
+      lastActive: 'Never',
+      running: false,
+      debugPort: 9222 + profiles.length,
+    }
+
+    setProfiles((previous) => [...previous, newProfile])
+    setSenderRows((previous) => [
+      ...previous,
+      {
+        id: `${nextRowNumber}-${nextProfileId}`,
+        rowNumber: nextRowNumber,
+        profileId: nextProfileId,
+        profileName: 'Waiting for Gmail account',
+      },
+    ])
+    void openProfile(newProfile)
+    addActivity(
+      'profile',
+      'New sender row added',
+      `${newProfile.name} was opened for Gmail login.`
+    )
+  }
+
   const generateAttachment = async () => {
     if (!attachmentHtml.trim()) {
       alert('Enter HTML content before generating an attachment.')
@@ -1393,7 +1425,7 @@ function App() {
 
         <button
           className="secondary-btn"
-          onClick={resetCampaignForm}
+          onClick={handleNewSenderRow}
         >
           <Plus size={16} />
           New
@@ -1496,6 +1528,59 @@ function App() {
           </button>
         </div>
       </section>
+
+      {senderRows.map((row) => (
+        <section className="compact-send-panel compact-pending-row" key={row.id}>
+          <div className="compact-row-number">{row.rowNumber}</div>
+
+          <div className="compact-profile-cell">
+            <span className="compact-status-dot waiting" />
+            <div>
+              <strong>{row.profileName}</strong>
+              <span>waiting</span>
+            </div>
+          </div>
+
+          <div className="compact-message-cell">
+            <span className="compact-recipient-label">
+              Chrome Profile {row.profileId}
+            </span>
+            <input
+              className="compact-subject-input"
+              placeholder="Subject Line"
+              disabled
+            />
+            <textarea
+              className="compact-body-input"
+              placeholder="Body HTML"
+              disabled
+            />
+          </div>
+
+          <div className="compact-progress-cell">
+            <span>Sent / Total</span>
+            <strong>
+              0 <small>/ 0</small>
+            </strong>
+            <div className="compact-progress-track">
+              <span style={{ width: '0%' }} />
+            </div>
+            <small className="compact-failed">Failed: 0</small>
+          </div>
+
+          <div className="compact-control-cell">
+            <button type="button" className="compact-load-recipients">
+              <Upload size={13} />
+              Load recipients
+            </button>
+            <small>Waiting for Gmail account</small>
+            <button type="button" className="compact-send-button" disabled>
+              <Play size={14} />
+              Send
+            </button>
+          </div>
+        </section>
+      ))}
 
       <section className="campaign-builder">
         <div className="campaign-form">

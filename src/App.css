@@ -2975,6 +2975,48 @@ nav {
   background: #318dff;
 }
 
+.compact-send-button:disabled {
+  background: #272a2e;
+  color: #626970;
+  cursor: not-allowed;
+}
+
+.compact-load-recipients {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid #303944;
+  border-radius: 4px;
+  padding: 6px 8px;
+  background: #080a0d;
+  color: #b9c3ce;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.compact-load-recipients:hover {
+  border-color: #4a89cf;
+  color: #fff;
+}
+
+.compact-pending-row {
+  opacity: 0.92;
+}
+
+.compact-pending-row .compact-message-cell {
+  opacity: 0.68;
+}
+
+.compact-pending-row .compact-subject-input,
+.compact-pending-row .compact-body-input {
+  cursor: not-allowed;
+}
+
+.compact-pending-row .compact-control-cell > small {
+  color: #697581;
+}
+
 .compact-campaign-shell .form-card:nth-child(1),
 .compact-campaign-shell .form-card:nth-child(2),
 .compact-campaign-shell .form-card:nth-child(7),
