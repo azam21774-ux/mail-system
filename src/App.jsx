@@ -728,7 +728,7 @@ function ActivationGate() {
               setLicenseKey(event.target.value.toUpperCase())
               setError('')
             }}
-            placeholder="MM-XXXXXX-XXXXXX-XXXXXX"
+            placeholder="Enter license key"
             autoComplete="off"
             spellCheck="false"
           />
