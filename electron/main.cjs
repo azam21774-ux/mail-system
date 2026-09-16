@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, shell, safeStorage } = require('electron')
 const { spawn, execFile } = require('child_process')
 const crypto = require('crypto')
+const http = require('http')
 const path = require('path')
 const fs = require('fs')
 const puppeteer = require('puppeteer-core')
@@ -10,6 +11,9 @@ const { Document, ImageRun, Packer, Paragraph } = require('docx')
 const PptxGenJS = require('pptxgenjs')
 
 const profilesRoot = path.join(app.getPath('userData'), 'chrome-profiles')
+const gmailAccountsFile = path.join(app.getPath('userData'), 'gmail-accounts.json')
+const gmailOAuthScope =
+  'openid email https://www.googleapis.com/auth/gmail.send'
 const campaignJobs = new Map()
 
 let mainWindow
@@ -61,6 +65,372 @@ function runCommand(command, args) {
 
 const wait = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds))
+
+function getGmailOAuthClientId() {
+  return String(process.env.GOOGLE_OAUTH_CLIENT_ID || '').trim()
+}
+
+function publicGmailAccount(account) {
+  return {
+    id: account.id,
+    email: account.email,
+    connectedAt: account.connectedAt,
+  }
+}
+
+function readGmailAccounts() {
+  if (!fs.existsSync(gmailAccountsFile)) return []
+
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error(
+      'Secure token storage is not available on this device. Restart the app and try again.'
+    )
+  }
+
+  const encrypted = fs.readFileSync(gmailAccountsFile, 'utf8').trim()
+  if (!encrypted) return []
+
+  const decrypted = safeStorage.decryptString(
+    Buffer.from(encrypted, 'base64')
+  )
+  const accounts = JSON.parse(decrypted)
+  return Array.isArray(accounts) ? accounts : []
+}
+
+function writeGmailAccounts(accounts) {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error(
+      'Secure token storage is not available on this device. Restart the app and try again.'
+    )
+  }
+
+  fs.mkdirSync(path.dirname(gmailAccountsFile), { recursive: true })
+  const encrypted = safeStorage.encryptString(JSON.stringify(accounts))
+  fs.writeFileSync(gmailAccountsFile, encrypted.toString('base64'), {
+    mode: 0o600,
+  })
+}
+
+function createPkcePair() {
+  const verifier = crypto.randomBytes(32).toString('base64url')
+  const challenge = crypto
+    .createHash('sha256')
+    .update(verifier)
+    .digest('base64url')
+
+  return { verifier, challenge }
+}
+
+function waitForGoogleOAuthCallback(server, expectedState) {
+  return withTimeout(
+    new Promise((resolve, reject) => {
+      server.on('request', (request, response) => {
+        const requestUrl = new URL(
+          request.url || '/',
+          `http://${request.headers.host || '127.0.0.1'}`
+        )
+
+        if (requestUrl.pathname !== '/oauth/callback') {
+          response.writeHead(404)
+          response.end('Not found')
+          return
+        }
+
+        const error = requestUrl.searchParams.get('error')
+        const code = requestUrl.searchParams.get('code')
+        const state = requestUrl.searchParams.get('state')
+
+        response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+        response.end(
+          `<html><body style="font-family:Arial;padding:32px"><h2>${
+            error ? 'Gmail connection cancelled' : 'Gmail connected'
+          }</h2><p>You can close this browser tab and return to Mail System.</p></body></html>`
+        )
+
+        if (error) {
+          reject(new Error(`Google OAuth was not completed: ${error}`))
+          return
+        }
+
+        if (!code || state !== expectedState) {
+          reject(new Error('Google OAuth returned an invalid callback.'))
+          return
+        }
+
+        resolve({ code })
+      })
+    }),
+    5 * 60 * 1000,
+    'Google OAuth timed out. Try connecting Gmail again.'
+  )
+}
+
+async function connectGmailAccount() {
+  const clientId = getGmailOAuthClientId()
+  if (!clientId) {
+    throw new Error(
+      'Google OAuth is not configured. Add GOOGLE_OAUTH_CLIENT_ID to the app environment first.'
+    )
+  }
+
+  const { verifier, challenge } = createPkcePair()
+  const state = crypto.randomBytes(24).toString('hex')
+  const server = http.createServer()
+
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+
+  try {
+    const address = server.address()
+    const redirectUri = `http://127.0.0.1:${address.port}/oauth/callback`
+    const authorizationUrl = new URL(
+      'https://accounts.google.com/o/oauth2/v2/auth'
+    )
+    authorizationUrl.search = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: gmailOAuthScope,
+      access_type: 'offline',
+      prompt: 'consent',
+      state,
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+    }).toString()
+
+    const callbackPromise = waitForGoogleOAuthCallback(server, state)
+    const opened = await shell.openExternal(authorizationUrl.toString())
+    if (opened === false) {
+      throw new Error('Could not open the Google login page in Chrome.')
+    }
+
+    const { code } = await callbackPromise
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        code,
+        code_verifier: verifier,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
+      }),
+    })
+    const tokenData = await tokenResponse.json()
+
+    if (!tokenResponse.ok || !tokenData.access_token) {
+      throw new Error(
+        tokenData.error_description ||
+          tokenData.error ||
+          'Google did not return an access token.'
+      )
+    }
+
+    const profileResponse = await fetch(
+      'https://openidconnect.googleapis.com/v1/userinfo',
+      {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      }
+    )
+    const profileData = await profileResponse.json()
+    if (!profileResponse.ok || !profileData.email) {
+      throw new Error('Google did not return the Gmail account email.')
+    }
+
+    const accounts = readGmailAccounts()
+    const existing = accounts.find(
+      (account) =>
+        account.email.toLowerCase() === String(profileData.email).toLowerCase()
+    )
+    const account = {
+      id: existing?.id || crypto.randomUUID(),
+      email: profileData.email,
+      refreshToken: tokenData.refresh_token || existing?.refreshToken,
+      accessToken: tokenData.access_token,
+      accessTokenExpiresAt:
+        Date.now() + Math.max(Number(tokenData.expires_in || 3600) - 60, 60) * 1000,
+      connectedAt: existing?.connectedAt || new Date().toISOString(),
+    }
+
+    if (!account.refreshToken) {
+      throw new Error(
+        'Google did not return a refresh token. Try connecting this account again.'
+      )
+    }
+
+    const nextAccounts = accounts.filter((item) => item.id !== account.id)
+    nextAccounts.push(account)
+    writeGmailAccounts(nextAccounts)
+
+    return publicGmailAccount(account)
+  } finally {
+    server.close()
+  }
+}
+
+async function getGmailAccessToken(accountId) {
+  const clientId = getGmailOAuthClientId()
+  const accounts = readGmailAccounts()
+  const account = accounts.find((item) => item.id === String(accountId))
+
+  if (!account) throw new Error('The selected Gmail account is not connected.')
+  if (
+    account.accessToken &&
+    Number(account.accessTokenExpiresAt || 0) > Date.now()
+  ) {
+    return account.accessToken
+  }
+
+  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: clientId,
+      refresh_token: account.refreshToken,
+      grant_type: 'refresh_token',
+    }),
+  })
+  const tokenData = await tokenResponse.json()
+
+  if (!tokenResponse.ok || !tokenData.access_token) {
+    throw new Error(
+      tokenData.error_description ||
+        'The Gmail authorization expired. Connect this account again.'
+    )
+  }
+
+  account.accessToken = tokenData.access_token
+  account.accessTokenExpiresAt =
+    Date.now() + Math.max(Number(tokenData.expires_in || 3600) - 60, 60) * 1000
+  writeGmailAccounts(accounts)
+  return account.accessToken
+}
+
+function wrapBase64(value) {
+  return Buffer.from(value)
+    .toString('base64')
+    .match(/.{1,76}/g)
+    ?.join('\r\n') || ''
+}
+
+function encodeMimeHeader(value) {
+  return `=?UTF-8?B?${Buffer.from(String(value || ''), 'utf8').toString(
+    'base64'
+  )}?=`
+}
+
+function mimeTypeForFile(filePath) {
+  const extension = path.extname(filePath).toLowerCase()
+  return (
+    {
+      '.pdf': 'application/pdf',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.heic': 'image/heic',
+      '.txt': 'text/plain',
+      '.html': 'text/html',
+      '.docx':
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.xlsx':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.pptx':
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    }[extension] || 'application/octet-stream'
+  )
+}
+
+function createMimeMessage({
+  recipient,
+  subject,
+  body,
+  htmlMode,
+  attachmentPath,
+}) {
+  const textBody = htmlMode ? stripHtmlToText(body) : String(body || '')
+  const htmlBody = htmlMode
+    ? String(body || '')
+    : String(body || '').replace(/\r?\n/g, '<br>')
+  const alternativeBoundary = `alt_${crypto.randomBytes(12).toString('hex')}`
+  const hasAttachment = Boolean(attachmentPath)
+  const mixedBoundary = `mixed_${crypto.randomBytes(12).toString('hex')}`
+  const alternative = [
+    `Content-Type: multipart/alternative; boundary="${alternativeBoundary}"`,
+    '',
+    `--${alternativeBoundary}`,
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    wrapBase64(textBody),
+    `--${alternativeBoundary}`,
+    'Content-Type: text/html; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    wrapBase64(htmlBody),
+    `--${alternativeBoundary}--`,
+  ].join('\r\n')
+
+  const headers = [
+    'MIME-Version: 1.0',
+    `To: ${recipient}`,
+    `Subject: ${encodeMimeHeader(subject)}`,
+  ]
+
+  if (!hasAttachment) {
+    headers.push(
+      `Content-Type: multipart/alternative; boundary="${alternativeBoundary}"`,
+      '',
+      alternative
+    )
+    return headers.join('\r\n')
+  }
+
+  const fileName = path.basename(attachmentPath)
+  const attachment = fs.readFileSync(attachmentPath)
+  headers.push(
+    `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`,
+    '',
+    `--${mixedBoundary}`,
+    alternative,
+    `--${mixedBoundary}`,
+    `Content-Type: ${mimeTypeForFile(attachmentPath)}; name="${fileName}"`,
+    `Content-Disposition: attachment; filename="${fileName}"`,
+    'Content-Transfer-Encoding: base64',
+    '',
+    wrapBase64(attachment),
+    `--${mixedBoundary}--`
+  )
+
+  return headers.join('\r\n')
+}
+
+async function sendGmailApiMessage(accountId, message) {
+  const accessToken = await getGmailAccessToken(accountId)
+  const response = await fetch(
+    'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        raw: Buffer.from(message, 'utf8').toString('base64url'),
+      }),
+    }
+  )
+  const data = await response.json()
+
+  if (!response.ok || !data.id) {
+    throw new Error(
+      data.error?.message || 'Gmail API could not send this message.'
+    )
+  }
+
+  return data
+}
 
 function withTimeout(promise, milliseconds, message) {
   let timeoutId
@@ -1382,6 +1752,48 @@ function createWindow() {
   }
 }
 
+ipcMain.handle('connect-gmail', async () => {
+  try {
+    return { success: true, account: await connectGmailAccount() }
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || 'Could not connect the Gmail account.',
+    }
+  }
+})
+
+ipcMain.handle('list-gmail-accounts', async () => {
+  try {
+    return {
+      success: true,
+      accounts: readGmailAccounts().map(publicGmailAccount),
+    }
+  } catch (error) {
+    return {
+      success: false,
+      accounts: [],
+      error: error.message || 'Could not load Gmail accounts.',
+    }
+  }
+})
+
+ipcMain.handle('disconnect-gmail', async (_event, accountId) => {
+  try {
+    const accounts = readGmailAccounts()
+    const nextAccounts = accounts.filter(
+      (account) => account.id !== String(accountId)
+    )
+    writeGmailAccounts(nextAccounts)
+    return { success: true, accounts: nextAccounts.map(publicGmailAccount) }
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || 'Could not disconnect the Gmail account.',
+    }
+  }
+})
+
 ipcMain.handle('start-profile', async (_event, port) => {
   try {
     const response = await fetch(`http://127.0.0.1:${port}/json/version`)
@@ -1600,6 +2012,181 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
     }
     if (attachmentDirectory && fs.existsSync(attachmentDirectory)) {
       fs.rmdirSync(attachmentDirectory)
+    }
+  }
+})
+
+ipcMain.handle('run-api-campaign', async (_event, payload) => {
+  const campaignId = String(payload?.campaignId || '')
+  const job = { cancelled: false }
+
+  if (!campaignId) {
+    return { success: false, error: 'Campaign ID is required.' }
+  }
+
+  if (campaignJobs.has(campaignId)) {
+    return { success: false, error: 'This campaign is already running.' }
+  }
+
+  campaignJobs.set(campaignId, job)
+
+  let attachmentPath
+  let attachmentDirectory
+  let sent = Number(payload.baseSent) || 0
+  let failed = Number(payload.baseFailed) || 0
+  let processed = 0
+  const recipients = Array.isArray(payload.recipients)
+    ? payload.recipients
+    : []
+  const startIndex = Number(payload.startIndex) || 0
+  const totalRecipients = Number(payload.totalRecipients) || recipients.length
+
+  const emitProgress = (progress) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    mainWindow.webContents.send('campaign-progress', {
+      campaignId: payload.campaignId,
+      gmailAccountId: payload.gmailAccountId,
+      ...progress,
+    })
+  }
+
+  try {
+    if (!recipients.length) {
+      throw new Error('The campaign CSV does not contain any recipients.')
+    }
+
+    if (payload.attachment?.data || payload.attachmentTemplate) {
+      attachmentDirectory = fs.mkdtempSync(
+        path.join(app.getPath('temp'), 'mail-system-api-')
+      )
+
+      if (payload.attachment?.data) {
+        const originalName =
+          path.basename(payload.attachment.name || 'attachment') || 'attachment'
+        attachmentPath = path.join(attachmentDirectory, originalName)
+        fs.writeFileSync(
+          attachmentPath,
+          Buffer.from(new Uint8Array(payload.attachment.data))
+        )
+      }
+    }
+
+    // Validate the account and refresh its token before starting the batch.
+    await getGmailAccessToken(payload.gmailAccountId)
+
+    for (const row of recipients) {
+      if (job.cancelled) {
+        emitProgress({
+          status: 'Paused',
+          sent,
+          failed,
+          pending: Math.max(totalRecipients - startIndex - processed, 0),
+          nextRecipientIndex: startIndex + processed,
+        })
+        return { success: false, cancelled: true, sent, failed }
+      }
+
+      const email = getRecipientValue(row, 'email')
+      const templateContext = createTemplateContext(
+        row,
+        payload.customVariables || {}
+      )
+      let recipientAttachmentPath = attachmentPath
+
+      try {
+        if (payload.attachmentTemplate) {
+          recipientAttachmentPath = await createTemplatedAttachment(
+            payload,
+            row,
+            attachmentDirectory,
+            templateContext
+          )
+        }
+
+        const subject = expandTemplate(
+          payload.subject || '',
+          row,
+          templateContext
+        )
+        const body = expandTemplate(payload.body || '', row, templateContext)
+        const message = createMimeMessage({
+          recipient: email,
+          subject,
+          body,
+          htmlMode: Boolean(payload.htmlMode || looksLikeHtml(body)),
+          attachmentPath: recipientAttachmentPath,
+        })
+
+        await sendGmailApiMessage(payload.gmailAccountId, message)
+        sent += 1
+        processed += 1
+        emitProgress({
+          status: 'Running',
+          sent,
+          failed,
+          pending: Math.max(totalRecipients - startIndex - processed, 0),
+          nextRecipientIndex: startIndex + processed,
+          recipientEmail: email,
+        })
+      } catch (error) {
+        failed += 1
+        processed += 1
+        emitProgress({
+          status: 'Running',
+          sent,
+          failed,
+          pending: Math.max(totalRecipients - startIndex - processed, 0),
+          nextRecipientIndex: startIndex + processed,
+          recipientEmail: email,
+          error: error.message,
+        })
+      } finally {
+        if (
+          payload.attachmentTemplate &&
+          recipientAttachmentPath &&
+          recipientAttachmentPath !== attachmentPath &&
+          fs.existsSync(recipientAttachmentPath)
+        ) {
+          fs.unlinkSync(recipientAttachmentPath)
+        }
+      }
+
+      if (payload.delaySeconds > 0 && processed < recipients.length) {
+        await wait(Number(payload.delaySeconds) * 1000)
+      }
+    }
+
+    emitProgress({
+      status:
+        failed > (Number(payload.baseFailed) || 0) &&
+        sent === (Number(payload.baseSent) || 0)
+          ? 'Failed'
+          : 'Completed',
+      sent,
+      failed,
+      pending: Math.max(totalRecipients - startIndex - processed, 0),
+      nextRecipientIndex: startIndex + processed,
+    })
+
+    return { success: true, sent, failed }
+  } catch (error) {
+    emitProgress({
+      status: 'Failed',
+      sent,
+      failed,
+      pending: Math.max(totalRecipients - startIndex - processed, 0),
+      nextRecipientIndex: startIndex + processed,
+      error: error.message,
+    })
+
+    return { success: false, error: error.message, sent, failed }
+  } finally {
+    campaignJobs.delete(campaignId)
+    if (attachmentPath && fs.existsSync(attachmentPath)) {
+      fs.unlinkSync(attachmentPath)
+    }
+    if (attachmentDirectory && fs.existsSync(attachmentDirectory)) {
+      fs.rmSync(attachmentDirectory, { recursive: true, force: true })
     }
   }
 })

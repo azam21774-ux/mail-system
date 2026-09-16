@@ -13,8 +13,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   runCampaign: (payload) =>
     ipcRenderer.invoke('run-campaign', payload),
 
+  runApiCampaign: (payload) =>
+    ipcRenderer.invoke('run-api-campaign', payload),
+
   stopCampaign: (campaignId) =>
     ipcRenderer.invoke('stop-campaign', campaignId),
+
+  connectGmail: () => ipcRenderer.invoke('connect-gmail'),
+
+  listGmailAccounts: () => ipcRenderer.invoke('list-gmail-accounts'),
+
+  disconnectGmail: (accountId) =>
+    ipcRenderer.invoke('disconnect-gmail', accountId),
 
   renderHtmlAsset: (payload) =>
     ipcRenderer.invoke('render-html-asset', payload),

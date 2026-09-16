@@ -2867,6 +2867,30 @@ nav {
   outline-offset: 2px;
 }
 
+.compact-api-connection-badge:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.compact-api-account-actions {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.compact-gmail-account-select {
+  min-width: 0;
+  flex: 1 1 auto;
+  border: 1px solid #303944;
+  border-radius: 4px;
+  padding: 4px 6px;
+  background: #080a0d;
+  color: #aeb9c5;
+  font-size: 9px;
+}
+
 .compact-profile-select {
   width: 100%;
   min-height: 27px;

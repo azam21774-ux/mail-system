@@ -571,6 +571,9 @@ function App() {
     confirmBeforeSend: false,
   })
   const [settingsSaved, setSettingsSaved] = useState(false)
+  const [gmailAccounts, setGmailAccounts] = useState([])
+  const [selectedGmailAccountId, setSelectedGmailAccountId] = useState('')
+  const [isConnectingGmail, setIsConnectingGmail] = useState(false)
 
   const sendingModes = [
     { name: 'UI Sending', icon: Mail },
@@ -588,6 +591,53 @@ function App() {
       },
       ...previous,
     ].slice(0, 100))
+  }
+
+  useEffect(() => {
+    let mounted = true
+
+    window.electronAPI?.listGmailAccounts?.().then((result) => {
+      if (!mounted || !result?.success) return
+
+      setGmailAccounts(result.accounts || [])
+      setSelectedGmailAccountId(result.accounts?.[0]?.id || '')
+    })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const connectGmail = async () => {
+    if (!window.electronAPI?.connectGmail) {
+      alert('Gmail OAuth is available in the desktop app.')
+      return
+    }
+
+    setIsConnectingGmail(true)
+
+    try {
+      const result = await window.electronAPI.connectGmail()
+      if (!result?.success || !result.account) {
+        alert(result?.error || 'Could not connect this Gmail account.')
+        return
+      }
+
+      setGmailAccounts((previous) => {
+        const next = previous.filter((item) => item.id !== result.account.id)
+        return [...next, result.account]
+      })
+      setSelectedGmailAccountId(result.account.id)
+      addActivity(
+        'profile',
+        'Gmail account connected',
+        `${result.account.email} is ready for API Sending.`
+      )
+    } catch (error) {
+      alert(error.message || 'Could not connect this Gmail account.')
+    } finally {
+      setIsConnectingGmail(false)
+    }
   }
 
   const addProfile = () => {
@@ -890,6 +940,111 @@ function App() {
       .forEach((campaign) => {
         void runCampaignOnProfile(campaign, profile)
       })
+  }
+
+  const runCampaignOnGmail = async (campaign, gmailAccountId) => {
+    if (activeCampaignRuns.current.has(campaign.id)) return
+
+    if (!campaign.recipientRows?.length) {
+      alert('This campaign has no CSV recipient rows. Upload the CSV again.')
+      return
+    }
+
+    if (!gmailAccountId) {
+      alert('Connect a Gmail account before starting API Sending.')
+      return
+    }
+
+    const campaignComplete =
+      campaign.recipients > 0 &&
+      (campaign.sent || 0) + (campaign.failed || 0) >= campaign.recipients
+    const startIndex = campaignComplete
+      ? 0
+      : Number(campaign.nextRecipientIndex ?? campaign.sent ?? 0)
+    const baseSent = campaignComplete ? 0 : campaign.sent || 0
+    const baseFailed = campaignComplete ? 0 : campaign.failed || 0
+    const recipientRows = campaign.recipientRows.slice(startIndex)
+
+    if (!recipientRows.length) {
+      alert('There are no pending recipients in this campaign.')
+      return
+    }
+
+    activeCampaignRuns.current.add(campaign.id)
+    setCampaigns((prev) =>
+      prev.map((item) =>
+        item.id === campaign.id
+          ? {
+              ...item,
+              status: 'Running',
+              startedAt: item.startedAt || new Date().toLocaleString(),
+            }
+          : item
+      )
+    )
+
+    try {
+      let attachmentPayload = null
+      if (campaign.attachment?.arrayBuffer) {
+        attachmentPayload = {
+          name: campaign.attachment.name,
+          data: await campaign.attachment.arrayBuffer(),
+        }
+      }
+
+      const attachmentUsesTemplate = Boolean(
+        campaign.attachment &&
+          campaign.attachmentHtml &&
+          (campaign.attachmentMode === 'html' ||
+            /\{\{[^}]+\}\}/.test(campaign.attachmentFileName || '') ||
+            /\{\{[^}]+\}\}/.test(campaign.attachmentHtml || ''))
+      )
+
+      const result = await window.electronAPI?.runApiCampaign?.({
+        campaignId: campaign.id,
+        gmailAccountId,
+        recipients: recipientRows,
+        startIndex,
+        baseSent,
+        baseFailed,
+        totalRecipients: campaign.recipients,
+        subject: campaign.subject,
+        body: campaign.body,
+        htmlMode: Boolean(campaign.htmlMode || looksLikeHtml(campaign.body)),
+        delaySeconds: campaign.delaySeconds ?? 0,
+        customVariables: campaign.customVariables || { tfn: '' },
+        attachment: attachmentUsesTemplate ? null : attachmentPayload,
+        attachmentTemplate: attachmentUsesTemplate
+          ? {
+              html: campaign.attachmentHtml,
+              format: campaign.attachmentFormat || 'PDF',
+              fileName: campaign.attachmentFileName || '{{id}}',
+            }
+          : null,
+      })
+
+      if (!result?.success) {
+        setCampaigns((prev) =>
+          prev.map((item) =>
+            item.id === campaign.id
+              ? { ...item, status: 'Failed', lastError: result?.error }
+              : item
+          )
+        )
+        alert(result?.error || 'API campaign could not be started.')
+      }
+    } catch (error) {
+      setCampaigns((prev) =>
+        prev.map((item) =>
+          item.id === campaign.id
+            ? { ...item, status: 'Failed', lastError: error.message }
+            : item
+        )
+      )
+      alert(error.message || 'API campaign could not be started.')
+    } finally {
+      activeCampaignRuns.current.delete(campaign.id)
+    }
   }
 
   const startProfileAutomation = async (profile) => {
@@ -1425,6 +1580,16 @@ function App() {
     )
     setEditingCampaignId(campaign.id)
 
+    if (active === 'API Sending') {
+      if (!selectedGmailAccountId) {
+        showApiConnectionRequired()
+        return
+      }
+
+      void runCampaignOnGmail(campaign, selectedGmailAccountId)
+      return
+    }
+
     const profile = profiles.find((item) =>
       campaign.profileIds.includes(item.id)
     )
@@ -1644,10 +1809,13 @@ function App() {
   const primaryCampaignRunning = liveCampaign?.status === 'Running'
   const isApiSending = active === 'API Sending'
   const isSendingMode = active === 'UI Sending' || isApiSending
+  const selectedGmailAccount = gmailAccounts.find(
+    (account) => account.id === selectedGmailAccountId
+  )
 
   const showApiConnectionRequired = () => {
     alert(
-      'Gmail OAuth is not connected yet. Accept the secure Gmail connection prompt to enable API Sending.'
+      'Connect a Gmail account with OAuth before starting API Sending.'
     )
   }
 
@@ -1687,22 +1855,49 @@ function App() {
           <div>
             <strong>
               {isApiSending
-                ? 'Gmail API connection'
+                ? selectedGmailAccount?.email || 'Gmail API connection'
                 : selectedProfile?.name || 'No Chrome profile'}
             </strong>
             <span>
-              {isApiSending ? 'connection required' : compactStatus.toLowerCase()}
+              {isApiSending
+                ? selectedGmailAccount
+                  ? 'connected'
+                  : 'connection required'
+                : compactStatus.toLowerCase()}
             </span>
           </div>
           {isApiSending ? (
-            <button
-              type="button"
-              className="compact-api-connection-badge"
-              onClick={showApiConnectionRequired}
-              title="Connect Gmail with OAuth"
-            >
-              Connect Gmail
-            </button>
+            <div className="compact-api-account-actions">
+              {gmailAccounts.length > 0 && (
+                <select
+                  className="compact-gmail-account-select"
+                  value={selectedGmailAccountId}
+                  onChange={(event) =>
+                    setSelectedGmailAccountId(event.target.value)
+                  }
+                  aria-label="Gmail API account"
+                >
+                  {gmailAccounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.email}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="button"
+                className="compact-api-connection-badge"
+                onClick={connectGmail}
+                disabled={isConnectingGmail}
+                title="Connect another Gmail account with OAuth"
+              >
+                {isConnectingGmail
+                  ? 'Opening…'
+                  : gmailAccounts.length
+                    ? '+ Gmail'
+                    : 'Connect Gmail'}
+              </button>
+            </div>
           ) : (
             <select
               className="compact-profile-select"
@@ -1808,7 +2003,11 @@ function App() {
             className="compact-send-button"
              onClick={() =>
                 isApiSending
-                  ? showApiConnectionRequired()
+                   ? selectedGmailAccountId
+                     ? primaryCampaignRunning
+                       ? stopCampaign(liveCampaign)
+                       : sendCurrentCampaign()
+                     : showApiConnectionRequired()
                   : primaryCampaignRunning
                  ? stopCampaign(liveCampaign)
                  : sendCurrentCampaign()
@@ -1923,7 +2122,11 @@ function App() {
               className="compact-send-button"
               onClick={() =>
                  isApiSending
-                   ? showApiConnectionRequired()
+                   ? selectedGmailAccountId
+                     ? rowCampaign?.status === 'Running'
+                       ? stopCampaign(rowCampaign)
+                       : sendSenderRow(row)
+                     : showApiConnectionRequired()
                    : rowCampaign?.status === 'Running'
                   ? stopCampaign(rowCampaign)
                   : sendSenderRow(row)
