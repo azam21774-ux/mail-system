@@ -819,6 +819,7 @@ async function connectToGmail(port) {
     })
   }
 
+  installGmailDialogHandler(page)
   await page.bringToFront()
   await page.waitForSelector(
     '[gh="cm"], [aria-label="Compose"], [role="button"][aria-label="Compose"]',
@@ -930,11 +931,12 @@ async function waitForAttachmentUpload(page) {
   )
 }
 
-async function clickGmailSend(page) {
+async function clickGmailSend(page, timeout = 10000) {
   const sendSelectors = [
     'div.dC > div[role="button"].aoO[data-tooltip^="Send"]',
     'div[role="button"].aoO[data-tooltip^="Send"]',
     'div[role="button"][data-tooltip^="Send"]',
+    'div[role="button"][command="send"]',
     'div[role="button"][aria-label^="Send"]',
     'button[aria-label*="Send" i]',
     '[aria-label^="Send"]',
@@ -944,35 +946,47 @@ async function clickGmailSend(page) {
   ]
 
   const selector = sendSelectors.join(', ')
+  const deadline = Date.now() + timeout
 
-  const candidates = await page.$$(selector)
+  while (Date.now() < deadline) {
+    const candidates = await page.$$(selector)
 
-  for (const button of candidates) {
-    const ready = await button
-      .evaluate((element) => {
-        const style = window.getComputedStyle(element)
-        const rect = element.getBoundingClientRect()
-        return (
-          style.display !== 'none' &&
-          style.visibility !== 'hidden' &&
-          rect.width > 0 &&
-          rect.height > 0 &&
-          element.getAttribute('aria-disabled') !== 'true' &&
-          !element.disabled
+    for (const button of candidates) {
+      const ready = await button
+        .evaluate((element) => {
+          const style = window.getComputedStyle(element)
+          const rect = element.getBoundingClientRect()
+          return (
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            rect.width > 0 &&
+            rect.height > 0 &&
+            element.getAttribute('aria-disabled') !== 'true' &&
+            !element.disabled
+          )
+        })
+        .catch(() => false)
+
+      if (!ready) continue
+
+      try {
+        await button.scrollIntoViewIfNeeded().catch(() => {})
+        const box = await button.boundingBox()
+        if (!box) continue
+
+        // Use Puppeteer's real mouse interaction instead of HTMLElement.click().
+        // Gmail's toolbar listens for the browser mouse event sequence.
+        await page.mouse.click(
+          box.x + box.width / 2,
+          box.y + box.height / 2
         )
-      })
-      .catch(() => false)
-
-    if (!ready) continue
-
-    try {
-      // Use Puppeteer's real mouse interaction instead of HTMLElement.click().
-      // Gmail's toolbar listens for the browser mouse event sequence.
-      await button.click()
-      return true
-    } catch {
-      // Try the next visible Send candidate if Gmail replaced this node.
+        return true
+      } catch {
+        // Gmail can replace the toolbar node while the compose window settles.
+      }
     }
+
+    await wait(200)
   }
 
   return false
@@ -1054,6 +1068,56 @@ async function pressSendShortcut(page) {
   } finally {
     await page.keyboard.up(modifier)
   }
+}
+
+const gmailDialogHandlers = new WeakMap()
+
+function installGmailDialogHandler(page) {
+  if (gmailDialogHandlers.has(page)) return
+
+  const handler = async (dialog) => {
+    const message = dialog.message()
+    const isEmptyComposePrompt =
+      /send this message without[\s\S]*(subject|body|text)/i.test(message)
+
+    try {
+      if (isEmptyComposePrompt) {
+        await dialog.accept()
+      } else {
+        await dialog.dismiss()
+      }
+    } catch {
+      // Gmail may close or replace the dialog immediately after sending.
+    }
+  }
+
+  page.on('dialog', handler)
+  gmailDialogHandlers.set(page, handler)
+}
+
+async function waitForComposeClosed(page, timeout = 10000) {
+  return page
+    .waitForFunction(
+      () => {
+        const subjectInput = document.querySelector(
+          'input[name="subjectbox"]'
+        )
+        if (!subjectInput) return true
+
+        const style = window.getComputedStyle(subjectInput)
+        const rect = subjectInput.getBoundingClientRect()
+        return (
+          style.display === 'none' ||
+          style.visibility === 'hidden' ||
+          subjectInput.getAttribute('aria-hidden') === 'true' ||
+          rect.width === 0 ||
+          rect.height === 0
+        )
+      },
+      { timeout }
+    )
+    .then(() => true)
+    .catch(() => false)
 }
 
 async function sendOneEmail(
@@ -1153,65 +1217,34 @@ async function sendOneEmail(
     await messageBody.type(body, { delay: typingDelay })
   }
 
-  const nativeDialogHandler = async (dialog) => {
-    const message = dialog.message()
-    const isEmptyComposePrompt =
-      /send this message without[\s\S]*(subject|body|text)/i.test(message)
+  const clickedSendButton = await clickGmailSend(page)
 
-    if (needsEmptyComposeConfirmation && isEmptyComposePrompt) {
-      await dialog.accept()
-    } else {
-      await dialog.dismiss()
-    }
+  if (!clickedSendButton) {
+    // Puppeteer requires modifier keys to be held separately; the platform
+    // modifier is selected by pressSendShortcut().
+    await pressSendShortcut(page)
   }
 
-  page.on('dialog', nativeDialogHandler)
+  if (needsEmptyComposeConfirmation) {
+    await confirmEmptyComposeIfVisible(page, 1000)
+  }
 
-  try {
-    const clickedSendButton = await clickGmailSend(page)
+  let sent = await waitForComposeClosed(page)
 
-    if (!clickedSendButton) {
-      // Puppeteer requires modifier keys to be held separately; the platform
-      // modifier is selected by pressSendShortcut().
-      await pressSendShortcut(page)
-    }
-
+  if (!sent && clickedSendButton) {
+    // The toolbar can be visible before Gmail is ready to accept the click.
+    await pressSendShortcut(page)
     if (needsEmptyComposeConfirmation) {
-      await confirmEmptyComposeIfVisible(page)
+      await confirmEmptyComposeIfVisible(page, 1000)
     }
-
-    const composeClosed = await page
-      .waitForSelector('input[name="subjectbox"]', {
-        hidden: true,
-        timeout: 3000,
-      })
-      .then(() => true)
-      .catch(() => false)
-
-    if (!composeClosed && clickedSendButton) {
-      // The toolbar can be visible before Gmail is ready to accept the click.
-      await pressSendShortcut(page)
-      if (needsEmptyComposeConfirmation) {
-        await confirmEmptyComposeIfVisible(page)
-      }
-    }
-
-    const sent = await page
-      .waitForSelector('input[name="subjectbox"]', {
-        hidden: true,
-        timeout: 3000,
-      })
-      .then(() => true)
-      .catch(() => false)
-
-    if (!sent) {
-      throw new Error('Gmail did not close the compose window after Send.')
-    }
-
-    await wait(800)
-  } finally {
-    page.off('dialog', nativeDialogHandler)
+    sent = await waitForComposeClosed(page)
   }
+
+  if (!sent) {
+    throw new Error('Gmail did not close the compose window after Send.')
+  }
+
+  await wait(800)
 }
 
 function createWindow() {
