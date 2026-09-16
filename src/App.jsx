@@ -24,6 +24,7 @@ import {
   Clock3,
   Keyboard,
   KeyRound,
+  LogOut,
 } from 'lucide-react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
@@ -526,6 +527,28 @@ function ProfileStats({ campaigns, profileId }) {
   )
 }
 
+function formatLicenseRemaining(expiresAt, now = Date.now()) {
+  if (!expiresAt) return 'No expiry available'
+
+  const remainingMs = Math.max(new Date(expiresAt).getTime() - now, 0)
+  if (!remainingMs) return 'Expired'
+
+  const totalMinutes = Math.ceil(remainingMs / 60000)
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m left`
+  }
+
+  const totalHours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (totalHours < 24) {
+    return minutes ? `${totalHours}h ${minutes}m left` : `${totalHours}h left`
+  }
+
+  const days = Math.floor(totalHours / 24)
+  const hours = totalHours % 24
+  return hours ? `${days}d ${hours}h left` : `${days}d left`
+}
+
 function ActivationGate() {
   const hasLicenseBridge = Boolean(window.electronAPI?.validateLicense)
   const [status, setStatus] = useState(hasLicenseBridge ? 'checking' : 'ready')
@@ -543,7 +566,10 @@ function ActivationGate() {
       if (!mounted) return
       const isActivated = result?.success && result?.activated
       setStatus(isActivated ? 'ready' : 'activation')
-      if (isActivated) setExpiresAt(result.expiresAt || null)
+      if (isActivated) {
+        setUsername(result.username || '')
+        setExpiresAt(result.expiresAt || null)
+      }
       if (result?.error) setError(result.error)
     }).catch((validationError) => {
       if (!mounted) return
@@ -563,6 +589,7 @@ function ActivationGate() {
       try {
         const result = await window.electronAPI.validateLicense()
         if (result?.success && result?.activated) {
+          setUsername(result.username || username)
           setExpiresAt(result.expiresAt || expiresAt)
           return
         }
@@ -578,7 +605,7 @@ function ActivationGate() {
 
     const intervalId = window.setInterval(validateWhileOpen, 30 * 1000)
     return () => window.clearInterval(intervalId)
-  }, [expiresAt, hasLicenseBridge, status])
+  }, [expiresAt, hasLicenseBridge, status, username])
 
   useEffect(() => {
     if (!hasLicenseBridge || status !== 'ready' || !expiresAt) {
@@ -598,7 +625,20 @@ function ActivationGate() {
   }, [expiresAt, hasLicenseBridge, status])
 
   if (!hasLicenseBridge || status === 'ready') {
-    return <MailSystemApp />
+    return (
+      <MailSystemApp
+        licenseUsername={username}
+        licenseExpiresAt={expiresAt}
+        onLicenseLogout={async () => {
+          await window.electronAPI.deactivateLicense()
+          setUsername('')
+          setLicenseKey('')
+          setExpiresAt(null)
+          setError('')
+          setStatus('activation')
+        }}
+      />
+    )
   }
 
   if (status === 'checking') {
@@ -640,6 +680,8 @@ function ActivationGate() {
         setError(result?.error || 'Could not activate this license.')
         return
       }
+      setUsername(result.username || cleanUsername)
+      setExpiresAt(result.expiresAt || null)
       setStatus('ready')
     } catch (activationError) {
       setError(activationError.message || 'Could not activate this license.')
@@ -708,8 +750,23 @@ function ActivationGate() {
   )
 }
 
-function MailSystemApp() {
+function MailSystemApp({
+  licenseUsername = '',
+  licenseExpiresAt = null,
+  onLicenseLogout,
+}) {
   const [active, setActive] = useState('UI Sending')
+  const [licenseClock, setLicenseClock] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (!licenseExpiresAt) return undefined
+
+    const intervalId = window.setInterval(() => {
+      setLicenseClock(Date.now())
+    }, 1000)
+
+    return () => window.clearInterval(intervalId)
+  }, [licenseExpiresAt])
 
   const [profiles, setProfiles] = useState([
     {
@@ -3548,6 +3605,24 @@ function MailSystemApp() {
             <span className="status-dot" />
             System Ready
           </div>
+          {licenseUsername && (
+            <div className="license-summary">
+              <div className="license-summary-label">LICENSE USER</div>
+              <strong className="license-summary-username">{licenseUsername}</strong>
+              <div className="license-summary-time">
+                <Clock3 size={12} />
+                <span>{formatLicenseRemaining(licenseExpiresAt, licenseClock)}</span>
+              </div>
+              <button
+                className="license-logout"
+                type="button"
+                onClick={onLicenseLogout}
+              >
+                <LogOut size={13} />
+                Log out
+              </button>
+            </div>
+          )}
           <div className="version">v1.0.0</div>
         </div>
       </aside>
