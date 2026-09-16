@@ -674,11 +674,14 @@ async function createPptxImageBuffer(image) {
     Number(image.displayHeight || image.height) || 900,
     1
   )
-  const slideWidth = 13.333
-  const slideHeight = Math.max(
-    2,
-    Math.min((slideWidth * imageHeight) / imageWidth, 20)
+  const naturalWidth = imageWidth / 96
+  const naturalHeight = imageHeight / 96
+  const scale = Math.min(
+    13.333 / naturalWidth,
+    20 / naturalHeight
   )
+  const slideWidth = naturalWidth * scale
+  const slideHeight = naturalHeight * scale
   const presentation = new PptxGenJS()
 
   presentation.defineLayout({
