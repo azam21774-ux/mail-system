@@ -777,6 +777,74 @@ async function connectToGmail(port) {
   return { browser, page }
 }
 
+async function checkChromeProfile(port) {
+  let browser
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/json/version`)
+
+    if (!response.ok) {
+      return {
+        success: true,
+        ready: false,
+        reason: 'Chrome profile is not running.',
+      }
+    }
+
+    const info = await response.json()
+    browser = await puppeteer.connect({
+      browserWSEndpoint: info.webSocketDebuggerUrl,
+      defaultViewport: null,
+    })
+
+    const pages = await browser.pages()
+    let page =
+      pages.find((candidate) => candidate.url().includes('mail.google.com')) ||
+      pages.find((candidate) => candidate.url().includes('google.com')) ||
+      pages[0]
+
+    if (!page) {
+      page = await browser.newPage()
+    }
+
+    const currentUrl = page.url()
+
+    if (currentUrl.includes('accounts.google.com')) {
+      return {
+        success: true,
+        ready: false,
+        reason: 'Waiting for Gmail account.',
+      }
+    }
+
+    if (!currentUrl.includes('mail.google.com')) {
+      await page.goto('https://mail.google.com/mail/u/0/#inbox', {
+        waitUntil: 'domcontentloaded',
+        timeout: 10000,
+      })
+    }
+
+    await page.waitForSelector(
+      '[gh="cm"], [aria-label="Compose"], [role="button"][aria-label="Compose"]',
+      { visible: true, timeout: 2500 }
+    )
+
+    return {
+      success: true,
+      ready: true,
+      url: page.url(),
+    }
+  } catch (error) {
+    return {
+      success: true,
+      ready: false,
+      reason: error.message || 'Waiting for Gmail account.',
+    }
+  } finally {
+    browser?.disconnect()
+  }
+}
+
 async function waitForAttachmentUpload(page) {
   await page.waitForFunction(
     () => {
@@ -1057,6 +1125,10 @@ ipcMain.handle('start-profile', async (_event, port) => {
       error: 'Open this Chrome profile first, then click Start.',
     }
   }
+})
+
+ipcMain.handle('check-chrome-profile', async (_event, port) => {
+  return checkChromeProfile(Number(port) || 9222)
 })
 
 ipcMain.handle('run-campaign', async (_event, payload) => {
@@ -1346,7 +1418,7 @@ ipcMain.handle('open-chrome-profile', async (_event, profileId, port) => {
       `--remote-debugging-port=${debugPort}`,
       '--no-first-run',
       '--no-default-browser-check',
-      'https://accounts.google.com/v3/signin/identifier?continue=https://www.google.com/&ec=futura_exp_og_so_72776762_e&hl=en&passive=true&flowName=GlifWebSignIn&flowEntry=ServiceLogin',
+      'https://mail.google.com/mail/u/0/#inbox',
     ], {
       detached: true,
       stdio: 'ignore',

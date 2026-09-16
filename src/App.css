@@ -2784,6 +2784,11 @@ nav {
   box-shadow: 0 0 0 3px rgba(98, 220, 114, 0.12);
 }
 
+.compact-status-dot.ready {
+  background: #62dc72;
+  box-shadow: 0 0 0 3px rgba(98, 220, 114, 0.12);
+}
+
 .compact-status-dot.failed {
   background: #ef6666;
   box-shadow: 0 0 0 3px rgba(239, 102, 102, 0.12);

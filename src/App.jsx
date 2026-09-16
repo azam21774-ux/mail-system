@@ -517,6 +517,7 @@ function App() {
     },
   ])
   const [senderRows, setSenderRows] = useState([])
+  const senderRowsRef = useRef([])
 
   const [showAdd, setShowAdd] = useState(false)
   const [profileName, setProfileName] = useState('')
@@ -939,6 +940,64 @@ function App() {
   }, [campaigns])
 
   useEffect(() => {
+    senderRowsRef.current = senderRows
+  }, [senderRows])
+
+  useEffect(() => {
+    if (!senderRows.length || !window.electronAPI?.checkChromeProfile) {
+      return undefined
+    }
+
+    let cancelled = false
+
+    const checkRows = async () => {
+      const results = await Promise.all(
+        senderRowsRef.current.map(async (row) => {
+          const profile = profiles.find((item) => item.id === row.profileId)
+          if (!profile) return { rowId: row.id, ready: false }
+
+          const result = await window.electronAPI.checkChromeProfile(
+            profile.debugPort || 9222
+          )
+
+          return {
+            rowId: row.id,
+            ready: Boolean(result?.ready),
+          }
+        })
+      )
+
+      if (cancelled) return
+
+      setSenderRows((previous) =>
+        previous.map((row) => {
+          const result = results.find((item) => item.rowId === row.id)
+          if (!result) return row
+
+          const profile = profiles.find((item) => item.id === row.profileId)
+          const ready = result.ready
+
+          return {
+            ...row,
+            status: ready ? 'ready' : 'waiting',
+            profileName: ready
+              ? profile?.name || `Chrome Profile ${row.profileId}`
+              : 'Waiting for Gmail account',
+          }
+        })
+      )
+    }
+
+    void checkRows()
+    const intervalId = window.setInterval(checkRows, 2000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [profiles, senderRows.length])
+
+  useEffect(() => {
     const unsubscribe = window.electronAPI?.onCampaignProgress?.((progress) => {
       const updatedCampaigns = campaignsRef.current.map((campaign) =>
         campaign.id === progress.campaignId
@@ -1073,6 +1132,11 @@ function App() {
         rowNumber: nextRowNumber,
         profileId: nextProfileId,
         profileName: 'Waiting for Gmail account',
+        status: 'waiting',
+        csvFile: null,
+        csvHeaders: [],
+        csvRows: [],
+        recipientCount: 0,
       },
     ])
     void openProfile(newProfile)
@@ -1180,14 +1244,48 @@ function App() {
     setShowCreateCampaign(true)
   }
 
-  const parseCSV = (file) => {
-    setCsvFile(file)
+  const parseCSV = (file, senderRowId = null) => {
+    if (senderRowId) {
+      setSenderRows((previous) =>
+        previous.map((row) =>
+          row.id === senderRowId
+            ? {
+                ...row,
+                csvFile: file,
+                csvHeaders: [],
+                csvRows: [],
+                recipientCount: 0,
+              }
+            : row
+        )
+      )
+    }
+
+    if (!senderRowId) {
+      setCsvFile(file)
+    }
 
     const reader = new FileReader()
 
     reader.onload = (event) => {
       const text = String(event.target.result || '')
       const { headers, data } = parseCsvText(text)
+
+      if (senderRowId) {
+        setSenderRows((previous) =>
+          previous.map((row) =>
+            row.id === senderRowId
+              ? {
+                  ...row,
+                  csvHeaders: headers,
+                  csvRows: data,
+                  recipientCount: data.length,
+                }
+              : row
+          )
+        )
+        return
+      }
 
       if (!headers.length) {
         setRecipientCount(0)
@@ -1545,10 +1643,10 @@ function App() {
           <div className="compact-row-number">{row.rowNumber}</div>
 
           <div className="compact-profile-cell">
-            <span className="compact-status-dot waiting" />
+            <span className={`compact-status-dot ${row.status || 'waiting'}`} />
             <div>
               <strong>{row.profileName}</strong>
-              <span>waiting</span>
+              <span>{row.status || 'waiting'}</span>
             </div>
           </div>
 
@@ -1582,7 +1680,7 @@ function App() {
           <div className="compact-control-cell">
             <label className="compact-load-recipients">
               <Upload size={13} />
-              Load recipients
+              <span>{row.csvFile?.name || 'Load recipients'}</span>
               <input
                 type="file"
                 accept=".csv,text/csv"
@@ -1591,11 +1689,14 @@ function App() {
                 }}
                 onChange={(event) => {
                   const file = event.target.files?.[0]
-                  if (file) parseCSV(file)
+                  if (file) parseCSV(file, row.id)
                 }}
               />
             </label>
-            <small>Waiting for Gmail account</small>
+            <small>
+              {row.recipientCount || 0} recipients
+              {row.status !== 'ready' ? ' · Waiting for Gmail account' : ''}
+            </small>
             <button type="button" className="compact-send-button" disabled>
               <Play size={14} />
               Send
