@@ -171,7 +171,11 @@ function waitForGoogleOAuthCallback(server, expectedState) {
   )
 }
 
-async function connectGmailAccount(clientIdOverride) {
+async function connectGmailAccount(credentials = {}) {
+  const clientIdOverride =
+    typeof credentials === 'string' ? credentials : credentials.clientId
+  const clientSecret =
+    typeof credentials === 'string' ? '' : String(credentials.clientSecret || '').trim()
   const clientId = getGmailOAuthClientId(clientIdOverride)
   if (!clientId) {
     throw new Error(
@@ -213,16 +217,19 @@ async function connectGmailAccount(clientIdOverride) {
     }
 
     const { code } = await callbackPromise
+    const tokenRequest = {
+      client_id: clientId,
+      code,
+      code_verifier: verifier,
+      redirect_uri: redirectUri,
+      grant_type: 'authorization_code',
+    }
+    if (clientSecret) tokenRequest.client_secret = clientSecret
+
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: clientId,
-        code,
-        code_verifier: verifier,
-        redirect_uri: redirectUri,
-        grant_type: 'authorization_code',
-      }),
+      body: new URLSearchParams(tokenRequest),
     })
     const tokenData = await tokenResponse.json()
 
@@ -1758,9 +1765,9 @@ function createWindow() {
   }
 }
 
-ipcMain.handle('connect-gmail', async (_event, clientId) => {
+ipcMain.handle('connect-gmail', async (_event, credentials) => {
   try {
-    return { success: true, account: await connectGmailAccount(clientId) }
+    return { success: true, account: await connectGmailAccount(credentials) }
   } catch (error) {
     return {
       success: false,

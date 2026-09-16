@@ -574,10 +574,12 @@ function App() {
   const [gmailAccounts, setGmailAccounts] = useState([])
   const [selectedGmailAccountId, setSelectedGmailAccountId] = useState('')
   const [isConnectingGmail, setIsConnectingGmail] = useState(false)
+  const [gmailConnectionError, setGmailConnectionError] = useState('')
   const [gmailOAuthClientId, setGmailOAuthClientId] = useState(() => {
     if (typeof window === 'undefined') return ''
     return window.localStorage.getItem('mail-system-google-oauth-client-id') || ''
   })
+  const [gmailOAuthClientSecret, setGmailOAuthClientSecret] = useState('')
 
   const sendingModes = [
     { name: 'UI Sending', icon: Mail },
@@ -619,6 +621,7 @@ function App() {
     }
 
     const clientId = gmailOAuthClientId.trim()
+    const clientSecret = gmailOAuthClientSecret.trim()
     if (!clientId || !clientId.endsWith('.apps.googleusercontent.com')) {
       alert(
         'Enter a valid Google OAuth Client ID ending with .apps.googleusercontent.com.'
@@ -627,12 +630,18 @@ function App() {
     }
 
     window.localStorage.setItem('mail-system-google-oauth-client-id', clientId)
+    setGmailConnectionError('')
     setIsConnectingGmail(true)
 
     try {
-      const result = await window.electronAPI.connectGmail(clientId)
+      const result = await window.electronAPI.connectGmail({
+        clientId,
+        clientSecret,
+      })
       if (!result?.success || !result.account) {
-        alert(result?.error || 'Could not connect this Gmail account.')
+        setGmailConnectionError(
+          result?.error || 'Could not connect this Gmail account.'
+        )
         return
       }
 
@@ -647,7 +656,9 @@ function App() {
         `${result.account.email} is ready for API Sending.`
       )
     } catch (error) {
-      alert(error.message || 'Could not connect this Gmail account.')
+      setGmailConnectionError(
+        error.message || 'Could not connect this Gmail account.'
+      )
     } finally {
       setIsConnectingGmail(false)
     }
@@ -1970,12 +1981,34 @@ function App() {
               <input
                 className="compact-gmail-client-id-input"
                 value={gmailOAuthClientId}
-                onChange={(event) => setGmailOAuthClientId(event.target.value)}
+                onChange={(event) => {
+                  setGmailOAuthClientId(event.target.value)
+                  setGmailConnectionError('')
+                }}
                 placeholder="Google OAuth Client ID"
                 aria-label="Google OAuth Client ID"
                 title="Use a Desktop OAuth Client ID ending in .apps.googleusercontent.com"
                 spellCheck="false"
               />
+              <input
+                className="compact-gmail-client-id-input"
+                type="password"
+                value={gmailOAuthClientSecret}
+                onChange={(event) => {
+                  setGmailOAuthClientSecret(event.target.value)
+                  setGmailConnectionError('')
+                }}
+                placeholder="Client Secret (optional)"
+                aria-label="Google OAuth Client Secret"
+                title="Optional for Desktop PKCE clients; required for some Google OAuth client types"
+                autoComplete="off"
+                spellCheck="false"
+              />
+              {gmailConnectionError && (
+                <span className="compact-gmail-connection-error">
+                  {gmailConnectionError}
+                </span>
+              )}
               <div className="compact-api-account-row">
                 {gmailAccounts.length > 0 && (
                   <select

@@ -2904,6 +2904,14 @@ nav {
   box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.12);
 }
 
+.compact-gmail-connection-error {
+  display: block;
+  flex: 1 1 100%;
+  color: #f27b7b;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
 .compact-api-account-row {
   display: flex;
   align-items: center;
