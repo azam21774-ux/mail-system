@@ -1122,7 +1122,7 @@ ipcMain.handle('start-profile', async (_event, port) => {
 
     return {
       success: false,
-      error: 'Open this Chrome profile first, then click Start.',
+      error: 'Open this Chrome profile first, then click Send.',
     }
   }
 })

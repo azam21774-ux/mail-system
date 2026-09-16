@@ -874,6 +874,40 @@ function App() {
       })
   }
 
+  const startProfileAutomation = async (profile) => {
+    let success = true
+
+    if (window.electronAPI?.startProfile) {
+      const result = await window.electronAPI.startProfile(
+        profile.debugPort || 9222
+      )
+      success = result?.success !== false
+
+      if (!success) {
+        alert(result?.error || 'Unable to start automation.')
+      }
+    }
+
+    if (success) {
+      setProfiles((prev) =>
+        prev.map((p) =>
+          p.id === profile.id
+            ? {
+                ...p,
+                running: true,
+                status: 'running',
+                lastActive: 'Just now',
+              }
+            : p
+        )
+      )
+      startCampaignsForProfile(profile.id)
+      addActivity('profile', 'Profile started', `${profile.name} is running.`)
+    }
+
+    return success
+  }
+
   const toggleStart = async (profile) => {
     if (profile.running) {
       setProfiles((prev) =>
@@ -903,35 +937,9 @@ function App() {
       return
     }
 
-    let success = true
-
-    if (window.electronAPI?.startProfile) {
-      const result = await window.electronAPI.startProfile(
-        profile.debugPort || 9222
-      )
-      success = result?.success !== false
-
-      if (!success) {
-        alert(result?.error || 'Unable to start automation.')
-      }
-    }
-
+    const success = await startProfileAutomation(profile)
     if (success) {
-      setProfiles((prev) =>
-        prev.map((p) =>
-          p.id === profile.id
-            ? {
-                ...p,
-                running: true,
-                status: 'running',
-                lastActive: 'Just now',
-              }
-            : p
-        )
-      )
-      startCampaignsForProfile(profile.id)
       runAssignedCampaignsForProfile(profile, true)
-      addActivity('profile', 'Profile started', `${profile.name} is running.`)
     }
   }
 
@@ -1372,7 +1380,7 @@ function App() {
     return campaign
   }
 
-  const sendCurrentCampaign = () => {
+  const sendCurrentCampaign = async () => {
     const campaign = buildCampaignPayload()
     if (!campaign) return
 
@@ -1393,8 +1401,8 @@ function App() {
     }
 
     if (!profile.running) {
-      alert('Open and start the selected Chrome profile before sending.')
-      return
+      const started = await startProfileAutomation(profile)
+      if (!started) return
     }
 
     void runCampaignOnProfile(campaign, profile)
@@ -1558,9 +1566,6 @@ function App() {
             <div className="compact-profile-actions">
               <button type="button" onClick={() => openProfile(selectedProfile)}>
                 Open
-              </button>
-              <button type="button" onClick={() => toggleStart(selectedProfile)}>
-                {selectedProfile.running ? 'Stop' : 'Start'}
               </button>
             </div>
           )}
