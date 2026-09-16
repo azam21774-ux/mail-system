@@ -57,10 +57,17 @@ const PREVIEW_ATTACHMENT_TAGS = {
   email: 'recipient@example.com',
 }
 
-function resolvePreviewAttachmentTags(value) {
+function resolvePreviewAttachmentTags(value, customVariables = {}) {
+  const previewTags = {
+    ...PREVIEW_ATTACHMENT_TAGS,
+    tfn: String(customVariables.tfn ?? ''),
+  }
+
   return String(value || '').replace(/\{\{([^}]+)\}\}/g, (match, key) => {
     const normalizedKey = String(key).trim().toLowerCase()
-    return PREVIEW_ATTACHMENT_TAGS[normalizedKey] || match
+    return Object.prototype.hasOwnProperty.call(previewTags, normalizedKey)
+      ? previewTags[normalizedKey]
+      : match
   })
 }
 
@@ -539,6 +546,7 @@ function App() {
   const [attachmentHtml, setAttachmentHtml] = useState(
     '<h1>Hello {{name}}</h1><p>Your attached document is ready.</p>'
   )
+  const [tfnValue, setTfnValue] = useState('')
   const [attachmentFormat, setAttachmentFormat] = useState('PDF')
   const [attachmentFileName, setAttachmentFileName] = useState('{{id}}')
   const [isGeneratingAttachment, setIsGeneratingAttachment] = useState(false)
@@ -831,6 +839,7 @@ function App() {
         htmlMode: Boolean(campaign.htmlMode || looksLikeHtml(campaign.body)),
         delaySeconds: campaign.delaySeconds ?? 0,
         typingDelayMs: campaign.typingDelayMs ?? 0,
+        customVariables: campaign.customVariables || { tfn: '' },
         attachment: attachmentUsesTemplate ? null : attachmentPayload,
         attachmentTemplate:
           attachmentUsesTemplate
@@ -1177,9 +1186,9 @@ function App() {
 
     try {
       const generatedFile = await createAttachmentFromHtml(
-        attachmentHtml,
+        resolvePreviewAttachmentTags(attachmentHtml, { tfn: tfnValue }),
         attachmentFormat,
-        attachmentFileName
+        resolvePreviewAttachmentTags(attachmentFileName, { tfn: tfnValue })
       )
       setAttachment(generatedFile)
       setAttachmentMode('html')
@@ -1213,6 +1222,7 @@ function App() {
     setAttachmentHtml(
       '<h1>Hello {{name}}</h1><p>Your attached document is ready.</p>'
     )
+    setTfnValue('')
     setAttachmentFormat('PDF')
     setAttachmentFileName('{{id}}')
   }
@@ -1252,6 +1262,7 @@ function App() {
       campaign.attachmentHtml ||
         '<h1>Hello {{name}}</h1><p>Your attached document is ready.</p>'
     )
+    setTfnValue(campaign.customVariables?.tfn || '')
     setAttachmentFormat(campaign.attachmentFormat || 'PDF')
     setAttachmentFileName(campaign.attachmentFileName || '{{id}}')
     setRecipientCount(campaign.recipients)
@@ -1361,6 +1372,9 @@ function App() {
       attachmentHtml,
       attachmentFormat,
       attachmentFileName,
+      customVariables: {
+        tfn: tfnValue,
+      },
       recipients: recipientCount,
       delaySeconds: Number(delaySeconds),
       typingDelayMs: Number(typingDelayMs),
@@ -1503,6 +1517,7 @@ function App() {
       year: 'numeric',
     }).format(new Date()),
     '{{id}}': 'A7K2M9QX',
+    '{{tfn}}': tfnValue,
   }
 
   const previewBody = Object.entries(previewTagValues).reduce(
@@ -1993,7 +2008,10 @@ function App() {
                 />
                 {/\{\{[^}]+\}\}/.test(attachmentFileName) && (
                   <span className="attachment-template-hint">
-                    Preview: {resolvePreviewAttachmentTags(attachmentFileName)}
+                    Preview:{' '}
+                    {resolvePreviewAttachmentTags(attachmentFileName, {
+                      tfn: tfnValue,
+                    })}
                     .{ATTACHMENT_FORMATS.find(
                       (format) => format.value === attachmentFormat
                     )?.extension || 'html'}{' '}
@@ -2166,6 +2184,27 @@ function App() {
                     <small>{tag}</small>
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div className="tag-group">
+              <span className="tag-group-label">Custom variable</span>
+              <div className="custom-variable-row">
+                <button
+                  type="button"
+                  className="tag custom-variable-tag"
+                  onClick={() => insertTag('{{tfn}}')}
+                  title="Insert {{tfn}}"
+                >
+                  {'{{tfn}}'}
+                </button>
+                <input
+                  className="text-input custom-variable-input"
+                  value={tfnValue}
+                  onChange={(event) => setTfnValue(event.target.value)}
+                  placeholder="TFN value"
+                  aria-label="TFN value"
+                />
               </div>
             </div>
 

@@ -2191,6 +2191,22 @@ nav {
   font-size: 9px;
 }
 
+.custom-variable-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.custom-variable-tag {
+  flex: 0 0 auto;
+  font-family: "SFMono-Regular", Consolas, monospace;
+}
+
+.custom-variable-input {
+  min-width: 180px;
+  height: 30px;
+}
+
 .tag-help {
   margin: 15px 0 0;
   color: #9297a0;

@@ -63,7 +63,7 @@ function getRecipientValue(row, key) {
   return String(entry?.[1] || '').trim()
 }
 
-function createTemplateContext(row) {
+function createTemplateContext(row, customVariables = {}) {
   const email = getRecipientValue(row, 'email')
   const name =
     getRecipientValue(row, 'name') ||
@@ -99,6 +99,7 @@ function createTemplateContext(row) {
       year: 'numeric',
     }).format(new Date()),
     id: randomId(),
+    tfn: String(customVariables.tfn ?? ''),
   }
 }
 
@@ -1208,7 +1209,10 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
       }
 
       const email = getRecipientValue(row, 'email')
-      const templateContext = createTemplateContext(row)
+      const templateContext = createTemplateContext(
+        row,
+        payload.customVariables || {}
+      )
 
       let recipientAttachmentPath = attachmentPath
 
