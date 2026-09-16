@@ -606,7 +606,7 @@ function App() {
       if (!mounted || !result?.success) return
 
       setGmailAccounts(result.accounts || [])
-      setSelectedGmailAccountId(result.accounts?.[0]?.id || '')
+      setSelectedGmailAccountId('')
     })
 
     return () => {
@@ -729,6 +729,49 @@ function App() {
     } finally {
       setSenderRowField(row.id, 'gmailConnecting', false)
     }
+  }
+
+  const removeGmailAccount = async (accountId) => {
+    if (!accountId || !window.electronAPI?.disconnectGmail) return
+
+    const account = gmailAccounts.find((item) => item.id === accountId)
+    if (
+      !window.confirm(
+        `Remove ${account?.email || 'this Gmail account'} from Mail System?`
+      )
+    ) {
+      return
+    }
+
+    const result = await window.electronAPI.disconnectGmail(accountId)
+    if (!result?.success) {
+      alert(result?.error || 'Could not remove this Gmail account.')
+      return
+    }
+
+    setGmailAccounts((previous) =>
+      previous.filter((item) => item.id !== accountId)
+    )
+    setSelectedGmailAccountId((current) =>
+      current === accountId ? '' : current
+    )
+    setSenderRows((previous) =>
+      previous.map((row) =>
+        row.gmailAccountId === accountId
+          ? {
+              ...row,
+              gmailAccountId: null,
+              profileName: 'Connect Gmail account',
+              status: 'waiting',
+            }
+          : row
+      )
+    )
+    addActivity(
+      'profile',
+      'Gmail account removed',
+      `${account?.email || 'The Gmail account'} was disconnected.`
+    )
   }
 
   const addProfile = () => {
@@ -2091,21 +2134,31 @@ function App() {
                 </span>
               )}
               <div className="compact-api-account-row">
-                {gmailAccounts.length > 0 && (
-                  <select
-                    className="compact-gmail-account-select"
-                    value={selectedGmailAccountId}
-                    onChange={(event) =>
-                      setSelectedGmailAccountId(event.target.value)
-                    }
-                    aria-label="Gmail API account"
+                <select
+                  className="compact-gmail-account-select"
+                  value={selectedGmailAccountId}
+                  onChange={(event) =>
+                    setSelectedGmailAccountId(event.target.value)
+                  }
+                  aria-label="Gmail API account"
+                >
+                  <option value="">Choose Gmail account</option>
+                  {gmailAccounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.email}
+                    </option>
+                  ))}
+                </select>
+                {selectedGmailAccountId && (
+                  <button
+                    type="button"
+                    className="compact-api-remove-account"
+                    onClick={() => removeGmailAccount(selectedGmailAccountId)}
+                    title="Remove selected Gmail account"
+                    aria-label="Remove selected Gmail account"
                   >
-                    {gmailAccounts.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.email}
-                      </option>
-                    ))}
-                  </select>
+                    <Trash2 size={12} />
+                  </button>
                 )}
                 <button
                   type="button"
@@ -2376,6 +2429,17 @@ function App() {
                         </option>
                       ))}
                     </select>
+                  )}
+                  {row.gmailAccountId && (
+                    <button
+                      type="button"
+                      className="compact-api-remove-account"
+                      onClick={() => removeGmailAccount(row.gmailAccountId)}
+                      title="Remove this Gmail account"
+                      aria-label={`Remove Gmail account from row ${row.rowNumber}`}
+                    >
+                      <Trash2 size={12} />
+                    </button>
                   )}
                   <button
                     type="button"

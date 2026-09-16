@@ -2872,6 +2872,26 @@ nav {
   opacity: 0.65;
 }
 
+.compact-api-remove-account {
+  display: inline-grid;
+  place-items: center;
+  width: 25px;
+  min-width: 25px;
+  height: 25px;
+  padding: 0;
+  border: 1px solid #493238;
+  border-radius: 4px;
+  background: #191317;
+  color: #d4777d;
+  cursor: pointer;
+}
+
+.compact-api-remove-account:hover {
+  border-color: #ef6666;
+  background: #2a171b;
+  color: #ff9b9b;
+}
+
 .compact-api-account-actions {
   display: flex;
   flex: 1 1 100%;
