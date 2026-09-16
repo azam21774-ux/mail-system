@@ -9,6 +9,7 @@ const sharp = require('sharp')
 const ExcelJS = require('exceljs')
 const { Document, ImageRun, Packer, Paragraph } = require('docx')
 const PptxGenJS = require('pptxgenjs')
+const { gmailOAuthClientId: packagedGmailOAuthClientId } = require('./oauth-config.cjs')
 
 const profilesRoot = path.join(app.getPath('userData'), 'chrome-profiles')
 const gmailAccountsFile = path.join(app.getPath('userData'), 'gmail-accounts.json')
@@ -67,7 +68,9 @@ const wait = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds))
 
 function getGmailOAuthClientId() {
-  return String(process.env.GOOGLE_OAUTH_CLIENT_ID || '').trim()
+  return String(
+    process.env.GOOGLE_OAUTH_CLIENT_ID || packagedGmailOAuthClientId || ''
+  ).trim()
 }
 
 function publicGmailAccount(account) {
@@ -169,7 +172,7 @@ async function connectGmailAccount() {
   const clientId = getGmailOAuthClientId()
   if (!clientId) {
     throw new Error(
-      'Google OAuth is not configured. Add GOOGLE_OAUTH_CLIENT_ID to the app environment first.'
+      'Google OAuth is not configured in this desktop build. Reinstall the latest Mail System installer.'
     )
   }
 
