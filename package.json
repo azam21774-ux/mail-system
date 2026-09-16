@@ -10,7 +10,9 @@
     "build": "vite build",
     "start": "electron .",
     "package:mac": "npm run build && electron-builder --mac dmg --publish never",
-    "package:mac:dir": "npm run build && electron-builder --mac dir --publish never"
+    "package:mac:dir": "npm run build && electron-builder --mac dir --publish never",
+    "package:win": "npm run build && electron-builder --win nsis --publish never",
+    "package:win:dir": "npm run build && electron-builder --win dir --publish never"
   },
   "dependencies": {
     "docx": "^9.7.1",
@@ -22,6 +24,7 @@
     "puppeteer-core": "^25.11.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "sharp": "^0.35.4",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
@@ -43,6 +46,10 @@
       "electron/**/*",
       "package.json"
     ],
+    "asarUnpack": [
+      "node_modules/sharp/**/*",
+      "node_modules/@img/**/*"
+    ],
     "asar": true,
     "mac": {
       "target": [
@@ -56,6 +63,25 @@
       ],
       "artifactName": "Mail-System-${version}-${arch}.${ext}",
       "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Mail-System-${version}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Mail System"
     }
   }
 }

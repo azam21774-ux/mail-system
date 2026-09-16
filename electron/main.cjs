@@ -4,6 +4,7 @@ const crypto = require('crypto')
 const path = require('path')
 const fs = require('fs')
 const puppeteer = require('puppeteer-core')
+const sharp = require('sharp')
 const ExcelJS = require('exceljs')
 const { Document, ImageRun, Packer, Paragraph } = require('docx')
 const PptxGenJS = require('pptxgenjs')
@@ -14,8 +15,36 @@ const campaignJobs = new Map()
 let mainWindow
 
 function getChromePath() {
-  const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-  return fs.existsSync(chromePath) ? chromePath : null
+  const candidates =
+    process.platform === 'win32'
+      ? [
+          path.join(
+            process.env.PROGRAMFILES || 'C:\\Program Files',
+            'Google',
+            'Chrome',
+            'Application',
+            'chrome.exe'
+          ),
+          path.join(
+            process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)',
+            'Google',
+            'Chrome',
+            'Application',
+            'chrome.exe'
+          ),
+          path.join(
+            process.env.LOCALAPPDATA || '',
+            'Google',
+            'Chrome',
+            'Application',
+            'chrome.exe'
+          ),
+        ]
+      : process.platform === 'darwin'
+        ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
+        : ['/usr/bin/google-chrome', '/usr/bin/chromium']
+
+  return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || null
 }
 
 function runCommand(command, args) {
@@ -250,6 +279,8 @@ async function renderHtmlAsset({
 }) {
   const renderWindow = new BrowserWindow({
     show: false,
+    paintWhenInitiallyHidden: true,
+    skipTaskbar: true,
     width: 1200,
     height: 900,
     backgroundColor: '#ffffff',
@@ -260,6 +291,15 @@ async function renderHtmlAsset({
   })
 
   try {
+    if (process.platform === 'win32') {
+      // Windows can defer painting a fully hidden Chromium surface. Paint the
+      // document in an inactive, non-taskbar window so screenshots and PDFs
+      // contain the rendered page instead of a blank surface.
+      renderWindow.showInactive()
+      renderWindow.setOpacity(0)
+      renderWindow.webContents.setBackgroundThrottling(false)
+    }
+
     await withTimeout(
       renderWindow.loadURL(
         `data:text/html;charset=UTF-8,${encodeURIComponent(
@@ -634,24 +674,34 @@ async function createPptxImageBuffer(image) {
 }
 
 async function convertPngBufferToHeic(pngData, directory) {
-  if (process.platform !== 'darwin') {
-    throw new Error('HEIC generation requires the macOS Electron app.')
-  }
-
   const suffix = randomId().toLowerCase()
   const inputPath = path.join(directory, `attachment-${suffix}.png`)
   const outputPath = path.join(directory, `attachment-${suffix}.heic`)
 
   try {
     fs.writeFileSync(inputPath, Buffer.from(pngData))
-    await runCommand('/usr/bin/sips', [
-      '-s',
-      'format',
-      'heic',
-      inputPath,
-      '--out',
-      outputPath,
-    ])
+    if (process.platform === 'darwin') {
+      await runCommand('/usr/bin/sips', [
+        '-s',
+        'format',
+        'heic',
+        inputPath,
+        '--out',
+        outputPath,
+      ])
+    } else {
+      try {
+        const encoded = await sharp(Buffer.from(pngData))
+          .heif({ compression: 'hevc', quality: 90 })
+          .toBuffer()
+        fs.writeFileSync(outputPath, encoded)
+      } catch {
+        const imageMagickCommand =
+          process.platform === 'win32' ? 'magick' : 'convert'
+        await runCommand(imageMagickCommand, [inputPath, outputPath])
+      }
+    }
+
     return fs.readFileSync(outputPath)
   } finally {
     for (const filePath of [inputPath, outputPath]) {
@@ -928,12 +978,13 @@ async function clickGmailSend(page) {
   return false
 }
 
-async function pressMacSendShortcut(page) {
-  await page.keyboard.down('Meta')
+async function pressSendShortcut(page) {
+  const modifier = process.platform === 'darwin' ? 'Meta' : 'Control'
+  await page.keyboard.down(modifier)
   try {
     await page.keyboard.press('Enter')
   } finally {
-    await page.keyboard.up('Meta')
+    await page.keyboard.up(modifier)
   }
 }
 
@@ -1031,9 +1082,9 @@ async function sendOneEmail(
   const clickedSendButton = await clickGmailSend(page)
 
   if (!clickedSendButton) {
-    // Puppeteer requires modifier keys to be held separately; "Meta+Enter"
-    // is not a valid key name.
-    await pressMacSendShortcut(page)
+    // Puppeteer requires modifier keys to be held separately; the platform
+    // modifier is selected by pressSendShortcut().
+    await pressSendShortcut(page)
   }
 
   const composeClosed = await page
@@ -1046,7 +1097,7 @@ async function sendOneEmail(
 
   if (!composeClosed && clickedSendButton) {
     // The toolbar can be visible before Gmail is ready to accept the click.
-    await pressMacSendShortcut(page)
+    await pressSendShortcut(page)
   }
 
   const sent = await page
@@ -1358,33 +1409,18 @@ ipcMain.handle('create-xlsx-from-image', async (_event, payload) => {
 })
 
 ipcMain.handle('convert-png-to-heic', async (_event, payload) => {
-  if (process.platform !== 'darwin') {
-    return {
-      success: false,
-      error: 'HEIC generation requires the macOS Electron app.',
-    }
-  }
-
   let directory
 
   try {
     directory = fs.mkdtempSync(path.join(app.getPath('temp'), 'mail-heic-'))
-    const inputPath = path.join(directory, 'source.png')
-    const outputPath = path.join(directory, 'output.heic')
-
-    fs.writeFileSync(inputPath, Buffer.from(new Uint8Array(payload.data)))
-    await runCommand('/usr/bin/sips', [
-      '-s',
-      'format',
-      'heic',
-      inputPath,
-      '--out',
-      outputPath,
-    ])
+    const data = await convertPngBufferToHeic(
+      Buffer.from(new Uint8Array(payload.data)),
+      directory
+    )
 
     return {
       success: true,
-      data: fs.readFileSync(outputPath),
+      data,
     }
   } catch (error) {
     return {
@@ -1429,17 +1465,18 @@ ipcMain.handle('open-chrome-profile', async (_event, profileId, port) => {
     // macOS can route a direct Chrome executable launch into the already
     // running instance. `open -na` forces a new Chrome app instance so each
     // isolated user-data-dir stays attached to its own sender profile.
-    const chromeLauncher = '/usr/bin/open'
-    const launchCommand = fs.existsSync(chromeLauncher)
-      ? chromeLauncher
-      : chromePath
-    const launchArgs = launchCommand === chromeLauncher
+    const macLauncher = '/usr/bin/open'
+    const useMacLauncher =
+      process.platform === 'darwin' && fs.existsSync(macLauncher)
+    const launchCommand = useMacLauncher ? macLauncher : chromePath
+    const launchArgs = useMacLauncher
       ? ['-na', '/Applications/Google Chrome.app', '--args', ...chromeArgs]
       : chromeArgs
 
     const chrome = spawn(launchCommand, launchArgs, {
       detached: true,
       stdio: 'ignore',
+      windowsHide: process.platform === 'win32',
     })
 
     chrome.unref()

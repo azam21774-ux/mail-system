@@ -281,7 +281,7 @@ async function createAttachmentFromHtml(html, format, requestedName) {
     if (!converted?.success) {
       throw new Error(
         converted?.error ||
-          'HEIC conversion is available in the macOS Electron app only.'
+          'HEIC conversion is unavailable on this computer.'
       )
     }
     return new File([converted.data], fileName, { type: 'image/heic' })
