@@ -533,6 +533,7 @@ function ActivationGate() {
   const [licenseKey, setLicenseKey] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [expiresAt, setExpiresAt] = useState(null)
 
   useEffect(() => {
     if (!hasLicenseBridge) return undefined
@@ -540,7 +541,9 @@ function ActivationGate() {
     let mounted = true
     window.electronAPI.validateLicense().then((result) => {
       if (!mounted) return
-      setStatus(result?.success && result?.activated ? 'ready' : 'activation')
+      const isActivated = result?.success && result?.activated
+      setStatus(isActivated ? 'ready' : 'activation')
+      if (isActivated) setExpiresAt(result.expiresAt || null)
       if (result?.error) setError(result.error)
     }).catch((validationError) => {
       if (!mounted) return
@@ -553,6 +556,47 @@ function ActivationGate() {
     }
   }, [hasLicenseBridge])
 
+  useEffect(() => {
+    if (!hasLicenseBridge || status !== 'ready') return undefined
+
+    const validateWhileOpen = async () => {
+      try {
+        const result = await window.electronAPI.validateLicense()
+        if (result?.success && result?.activated) {
+          setExpiresAt(result.expiresAt || expiresAt)
+          return
+        }
+
+        if (!result?.offline) {
+          setError(result?.error || 'This license is no longer active.')
+          setStatus('activation')
+        }
+      } catch {
+        // Keep the active session during a temporary network interruption.
+      }
+    }
+
+    const intervalId = window.setInterval(validateWhileOpen, 30 * 1000)
+    return () => window.clearInterval(intervalId)
+  }, [expiresAt, hasLicenseBridge, status])
+
+  useEffect(() => {
+    if (!hasLicenseBridge || status !== 'ready' || !expiresAt) {
+      return undefined
+    }
+
+    const remainingMs = Math.max(
+      new Date(expiresAt).getTime() - Date.now(),
+      0
+    )
+    const timeoutId = window.setTimeout(() => {
+      setError('This license has expired. Ask the administrator to extend it.')
+      setStatus('activation')
+    }, remainingMs)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [expiresAt, hasLicenseBridge, status])
+
   if (!hasLicenseBridge || status === 'ready') {
     return <MailSystemApp />
   }
@@ -561,7 +605,10 @@ function ActivationGate() {
     return (
       <div className="license-gate license-gate-loading">
         <div className="license-card">
-          <div className="license-icon"><KeyRound size={22} /></div>
+          <div className="license-brand">
+            <div className="license-brand-mark"><Mail size={18} /></div>
+            <strong>Mail System</strong>
+          </div>
           <strong>Checking activation</strong>
           <span>Connecting to the Mail System license server…</span>
         </div>
@@ -604,9 +651,18 @@ function ActivationGate() {
   return (
     <div className="license-gate">
       <form className="license-card" onSubmit={activate}>
-        <div className="license-icon"><KeyRound size={22} /></div>
-        <h1>Activate Mail System</h1>
-        <p>Enter the username created by your administrator and its license key.</p>
+        <div className="license-brand">
+          <div className="license-brand-mark"><Mail size={19} /></div>
+          <div>
+            <strong>Mail System</strong>
+            <span>Desktop workspace</span>
+          </div>
+        </div>
+        <div className="license-heading">
+          <span className="license-eyebrow">License access</span>
+          <h1>Welcome back</h1>
+          <p>Sign in with the access details provided by your administrator.</p>
+        </div>
 
         <label htmlFor="license-username">Username</label>
         <input
@@ -620,8 +676,6 @@ function ActivationGate() {
           autoComplete="username"
           autoFocus
         />
-        {error && !username.trim() && <span className="license-field-error">Enter your username.</span>}
-
         <label htmlFor="license-key">License key</label>
         <div className="license-key-input">
           <KeyRound size={18} />
@@ -637,16 +691,16 @@ function ActivationGate() {
             spellCheck="false"
           />
         </div>
-        {error && username.trim() && (
+        {error && (
           <span className="license-field-error">{error}</span>
         )}
 
         <button className="license-submit" type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Activating…' : 'Activate License'}
+          {isSubmitting ? 'Checking access…' : 'Continue'}
         </button>
         {!error && (
           <span className="license-help">
-            Contact your administrator if you need a new key.
+            Need access? Contact your administrator.
           </span>
         )}
       </form>

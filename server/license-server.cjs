@@ -48,6 +48,12 @@ const contentTypes = {
   '.woff2': 'font/woff2',
 }
 
+async function ensureLicenseSchema() {
+  await pool.query(
+    'ALTER TABLE license_users ADD COLUMN IF NOT EXISTS device_id TEXT'
+  )
+}
+
 function json(response, statusCode, payload) {
   response.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -466,12 +472,19 @@ async function handleLicense(request, response, url) {
       `UPDATE license_users
        SET activated_at = COALESCE(activated_at, NOW()),
            expires_at = COALESCE(expires_at, NOW() + (duration_hours * INTERVAL '1 hour')),
+           device_id = COALESCE(device_id, $2),
            last_seen_at = NOW(),
            activation_count = activation_count + 1
-       WHERE id = $1
+       WHERE id = $1 AND (device_id IS NULL OR device_id = $2)
        RETURNING *`,
-      [license.id]
+      [license.id, deviceId]
     )
+    if (!update.rowCount) {
+      json(response, 409, {
+        error: 'This license key is already activated on another device.',
+      })
+      return
+    }
     const activated = update.rows[0]
     json(response, 200, {
       success: true,
@@ -514,11 +527,27 @@ async function handleLicense(request, response, url) {
     json(response, 403, { error: 'This license is expired or revoked.' })
     return
   }
+  if (!payload.deviceId || (license.device_id && license.device_id !== payload.deviceId)) {
+    json(response, 403, {
+      error: 'This license is activated on another device.',
+    })
+    return
+  }
 
-  await pool.query(
-    'UPDATE license_users SET last_seen_at = NOW() WHERE id = $1',
-    [license.id]
+  const touch = await pool.query(
+    `UPDATE license_users
+     SET device_id = COALESCE(device_id, $2),
+         last_seen_at = NOW()
+     WHERE id = $1 AND (device_id IS NULL OR device_id = $2)
+     RETURNING id`,
+    [license.id, payload.deviceId]
   )
+  if (!touch.rowCount) {
+    json(response, 403, {
+      error: 'This license is activated on another device.',
+    })
+    return
+  }
   json(response, 200, {
     success: true,
     username: license.username,
@@ -561,8 +590,16 @@ const server = http.createServer(async (request, response) => {
   }
 })
 
-server.listen(PORT, HOST, () => {
-  console.log(`License admin server listening on ${HOST}:${PORT}`)
+async function startServer() {
+  await ensureLicenseSchema()
+  server.listen(PORT, HOST, () => {
+    console.log(`License admin server listening on ${HOST}:${PORT}`)
+  })
+}
+
+startServer().catch((error) => {
+  console.error('[license-server] Could not prepare the license database.', error)
+  process.exit(1)
 })
 
 async function shutdown() {

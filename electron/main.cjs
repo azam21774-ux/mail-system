@@ -97,6 +97,7 @@ async function validateStoredLicense() {
     return {
       success: false,
       activated: false,
+      offline: true,
       error: error.message || 'Could not reach the license server.',
     }
   }

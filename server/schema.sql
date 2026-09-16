@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS license_users (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   activated_at TIMESTAMPTZ,
   expires_at TIMESTAMPTZ,
+  device_id TEXT,
   revoked_at TIMESTAMPTZ,
   last_seen_at TIMESTAMPTZ,
   activation_count INTEGER NOT NULL DEFAULT 0
