@@ -1998,9 +1998,9 @@ function App() {
                   setGmailOAuthClientSecret(event.target.value)
                   setGmailConnectionError('')
                 }}
-                placeholder="Client Secret (optional)"
+                placeholder="Client Secret (required for Web app clients)"
                 aria-label="Google OAuth Client Secret"
-                title="Optional for Desktop PKCE clients; required for some Google OAuth client types"
+                title="Leave blank for Desktop PKCE clients; required for Web application OAuth clients"
                 autoComplete="off"
                 spellCheck="false"
               />

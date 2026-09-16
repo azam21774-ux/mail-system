@@ -149,8 +149,14 @@ function waitForGoogleOAuthCallback(server, expectedState) {
         response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
         response.end(
           `<html><body style="font-family:Arial;padding:32px"><h2>${
-            error ? 'Gmail connection cancelled' : 'Gmail connected'
-          }</h2><p>You can close this browser tab and return to Mail System.</p></body></html>`
+            error
+              ? 'Gmail connection cancelled'
+              : 'Authorization received'
+          }</h2><p>${
+            error
+              ? 'You can close this browser tab and try again from Mail System.'
+              : 'Return to Mail System while it finishes the Gmail connection.'
+          }</p></body></html>`
         )
 
         if (error) {
@@ -234,6 +240,16 @@ async function connectGmailAccount(credentials = {}) {
     const tokenData = await tokenResponse.json()
 
     if (!tokenResponse.ok || !tokenData.access_token) {
+      if (
+        tokenData.error === 'invalid_client' ||
+        /client[_ ]secret/i.test(
+          tokenData.error_description || tokenData.error || ''
+        )
+      ) {
+        throw new Error(
+          'Google requires a Client Secret for this OAuth client. Enter its secret, or create a Desktop app OAuth Client ID that uses PKCE without a secret.'
+        )
+      }
       throw new Error(
         tokenData.error_description ||
           tokenData.error ||
