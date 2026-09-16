@@ -933,6 +933,7 @@ async function waitForAttachmentUpload(page) {
 
 async function clickGmailSend(page, timeout = 10000) {
   const sendSelectors = [
+    'div.T-I.J-J5-Ji.aoO.v7.T-I-atl.L3[role="button"][data-tooltip^="Send"]',
     'div.dC > div[role="button"].aoO[data-tooltip^="Send"]',
     'div[role="button"].aoO[data-tooltip^="Send"]',
     'div[role="button"][data-tooltip^="Send"]',
@@ -997,10 +998,7 @@ async function clickGmailSend(page, timeout = 10000) {
         // Click the verified compose Send control. The previous broad
         // aria-label selector could match Gmail's unrelated Send feedback
         // control before it reached the compose toolbar.
-        await page.mouse.click(
-          box.x + box.width / 2,
-          box.y + box.height / 2
-        )
+        await button.click()
         return true
       } catch {
         // Gmail can replace the toolbar node while the compose window settles.
@@ -1067,7 +1065,26 @@ async function confirmEmptyComposeIfVisible(page, timeout = 2500) {
         if (!shouldConfirm) continue
 
         try {
-          await button.click()
+          await button.focus().catch(() => {})
+          // Gmail's confirmation is confirmed with Enter in the same way a
+          // user confirms the native prompt. Keep a click fallback for
+          // Gmail variants that do not move focus to the confirmation button.
+          await page.keyboard.press('Enter')
+          await wait(100)
+          const stillVisible = await dialog
+            .evaluate((element) => {
+              const style = window.getComputedStyle(element)
+              const rect = element.getBoundingClientRect()
+              return (
+                style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                rect.width > 0 &&
+                rect.height > 0
+              )
+            })
+            .catch(() => false)
+
+          if (stillVisible) await button.click()
           return true
         } catch {
           // Gmail may replace the dialog node after the first click.
