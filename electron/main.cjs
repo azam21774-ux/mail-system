@@ -1153,47 +1153,65 @@ async function sendOneEmail(
     await messageBody.type(body, { delay: typingDelay })
   }
 
-  const clickedSendButton = await clickGmailSend(page)
+  const nativeDialogHandler = async (dialog) => {
+    const message = dialog.message()
+    const isEmptyComposePrompt =
+      /send this message without[\s\S]*(subject|body|text)/i.test(message)
 
-  if (!clickedSendButton) {
-    // Puppeteer requires modifier keys to be held separately; the platform
-    // modifier is selected by pressSendShortcut().
-    await pressSendShortcut(page)
-  }
-
-  if (needsEmptyComposeConfirmation) {
-    await confirmEmptyComposeIfVisible(page)
-  }
-
-  const composeClosed = await page
-    .waitForSelector('input[name="subjectbox"]', {
-      hidden: true,
-      timeout: 3000,
-    })
-    .then(() => true)
-    .catch(() => false)
-
-  if (!composeClosed && clickedSendButton) {
-    // The toolbar can be visible before Gmail is ready to accept the click.
-    await pressSendShortcut(page)
-    if (needsEmptyComposeConfirmation) {
-      await confirmEmptyComposeIfVisible(page)
+    if (needsEmptyComposeConfirmation && isEmptyComposePrompt) {
+      await dialog.accept()
+    } else {
+      await dialog.dismiss()
     }
   }
 
-  const sent = await page
-    .waitForSelector('input[name="subjectbox"]', {
-      hidden: true,
-      timeout: 3000,
-    })
-    .then(() => true)
-    .catch(() => false)
+  page.on('dialog', nativeDialogHandler)
 
-  if (!sent) {
-    throw new Error('Gmail did not close the compose window after Send.')
+  try {
+    const clickedSendButton = await clickGmailSend(page)
+
+    if (!clickedSendButton) {
+      // Puppeteer requires modifier keys to be held separately; the platform
+      // modifier is selected by pressSendShortcut().
+      await pressSendShortcut(page)
+    }
+
+    if (needsEmptyComposeConfirmation) {
+      await confirmEmptyComposeIfVisible(page)
+    }
+
+    const composeClosed = await page
+      .waitForSelector('input[name="subjectbox"]', {
+        hidden: true,
+        timeout: 3000,
+      })
+      .then(() => true)
+      .catch(() => false)
+
+    if (!composeClosed && clickedSendButton) {
+      // The toolbar can be visible before Gmail is ready to accept the click.
+      await pressSendShortcut(page)
+      if (needsEmptyComposeConfirmation) {
+        await confirmEmptyComposeIfVisible(page)
+      }
+    }
+
+    const sent = await page
+      .waitForSelector('input[name="subjectbox"]', {
+        hidden: true,
+        timeout: 3000,
+      })
+      .then(() => true)
+      .catch(() => false)
+
+    if (!sent) {
+      throw new Error('Gmail did not close the compose window after Send.')
+    }
+
+    await wait(800)
+  } finally {
+    page.off('dialog', nativeDialogHandler)
   }
-
-  await wait(800)
 }
 
 function createWindow() {
