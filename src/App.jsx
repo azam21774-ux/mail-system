@@ -639,7 +639,19 @@ function App() {
 
     if (!confirmed) return
 
+    const remainingProfiles = profiles.filter((item) => item.id !== profile.id)
+
     setProfiles((prev) => prev.filter((item) => item.id !== profile.id))
+    setSenderRows((prev) =>
+      prev.filter((row) => row.profileId !== profile.id)
+    )
+    setSelectedProfileIds((prev) => {
+      const nextSelectedIds = prev.filter(
+        (profileId) => Number(profileId) !== profile.id
+      )
+      if (nextSelectedIds.length) return nextSelectedIds
+      return remainingProfiles[0] ? [String(remainingProfiles[0].id)] : []
+    })
     setCampaigns((prev) =>
       prev.map((campaign) => {
         const profileIds = (
@@ -1567,6 +1579,15 @@ function App() {
               <button type="button" onClick={() => openProfile(selectedProfile)}>
                 Open
               </button>
+              <button
+                type="button"
+                className="compact-delete-profile"
+                onClick={() => deleteProfile(selectedProfile)}
+                aria-label={`Delete ${selectedProfile.name}`}
+                title="Delete profile"
+              >
+                <Trash2 size={13} />
+              </button>
             </div>
           )}
         </div>
@@ -1653,6 +1674,20 @@ function App() {
               <strong>{row.profileName}</strong>
               <span>{row.status || 'waiting'}</span>
             </div>
+            <button
+              type="button"
+              className="compact-delete-profile compact-row-delete"
+              onClick={() => {
+                const profile = profiles.find(
+                  (item) => item.id === row.profileId
+                )
+                if (profile) deleteProfile(profile)
+              }}
+              aria-label={`Delete Chrome Profile ${row.profileId}`}
+              title="Delete profile"
+            >
+              <Trash2 size={13} />
+            </button>
           </div>
 
           <div className="compact-message-cell">

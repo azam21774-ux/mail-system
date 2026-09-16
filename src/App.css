@@ -2826,6 +2826,31 @@ nav {
   color: #fff;
 }
 
+.compact-delete-profile {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  min-width: 26px;
+  height: 25px;
+  padding: 0;
+  border: 1px solid #493238;
+  border-radius: 4px;
+  background: #191317;
+  color: #d4777d;
+  cursor: pointer;
+}
+
+.compact-delete-profile:hover {
+  border-color: #ef6666;
+  background: #2a171b;
+  color: #ff9b9b;
+}
+
+.compact-row-delete {
+  align-self: center;
+  margin-left: auto;
+}
+
 .compact-message-cell {
   display: flex;
   flex-direction: column;
