@@ -1293,6 +1293,30 @@ function App() {
   }
 
   const handleNewSenderRow = () => {
+    if (active === 'API Sending') {
+      const nextRowNumber = senderRows.length + 2
+      const rowId = `api-${nextRowNumber}-${Date.now()}`
+
+      setSenderRows((previous) => [
+        ...previous,
+        {
+          id: rowId,
+          rowNumber: nextRowNumber,
+          gmailAccountId: selectedGmailAccountId || null,
+          profileName: selectedGmailAccount?.email || 'Connect Gmail account',
+          status: selectedGmailAccountId ? 'ready' : 'waiting',
+          subject: '',
+          body: '',
+          csvFile: null,
+          csvHeaders: [],
+          csvRows: [],
+          recipientCount: 0,
+          campaignId: null,
+        },
+      ])
+      return
+    }
+
     const nextProfileId =
       profiles.reduce((highest, profile) => Math.max(highest, profile.id), 0) + 1
     const nextRowNumber = senderRows.length + 2
@@ -1608,6 +1632,68 @@ function App() {
   }
 
   const sendSenderRow = async (row) => {
+    if (active === 'API Sending') {
+      const gmailAccountId = row.gmailAccountId || selectedGmailAccountId
+
+      if (!gmailAccountId) {
+        showApiConnectionRequired()
+        return
+      }
+
+      if (!row.csvRows?.length) {
+        alert('Load a CSV file before sending from this Gmail account.')
+        return
+      }
+
+      const existingCampaign = row.campaignId
+        ? campaigns.find((campaign) => campaign.id === row.campaignId)
+        : null
+      const campaign = {
+        id: existingCampaign?.id || Date.now() + Number(row.rowNumber || 0),
+        name: `${campaignName.trim() || 'Mail Campaign'} — ${
+          row.profileName || 'Gmail API account'
+        }`,
+        subject: row.subject || '',
+        body: row.body || '',
+        htmlMode: looksLikeHtml(row.body || ''),
+        profileIds: [],
+        profileId: null,
+        profileName: row.profileName,
+        gmailAccountId,
+        csvFile: row.csvFile,
+        attachment,
+        csvHeaders: row.csvHeaders || [],
+        recipientRows: row.csvRows || [],
+        csvName: row.csvFile?.name || null,
+        attachmentName: attachment?.name || null,
+        attachmentMode,
+        attachmentHtml,
+        attachmentFormat,
+        attachmentFileName,
+        customVariables: {
+          tfn: tfnValue,
+        },
+        recipients: row.recipientCount || row.csvRows.length,
+        delaySeconds: Number(delaySeconds),
+        typingDelayMs: Number(typingDelayMs),
+        sent: existingCampaign?.sent || 0,
+        failed: existingCampaign?.failed || 0,
+        nextRecipientIndex: existingCampaign?.nextRecipientIndex || 0,
+        createdAt: existingCampaign?.createdAt || new Date().toLocaleString(),
+        updatedAt: new Date().toLocaleString(),
+        status: existingCampaign?.status || 'Draft',
+      }
+
+      setCampaigns((previous) =>
+        existingCampaign
+          ? previous.map((item) => (item.id === campaign.id ? campaign : item))
+          : [campaign, ...previous]
+      )
+      setSenderRowField(row.id, 'campaignId', campaign.id)
+      void runCampaignOnGmail(campaign, gmailAccountId)
+      return
+    }
+
     if (row.status !== 'ready') {
       alert('Wait until this Chrome profile is ready in Gmail.')
       return
@@ -2030,6 +2116,9 @@ function App() {
           ? Math.min(((rowSent + rowFailed) / rowTotal) * 100, 100)
           : 0
         const rowStatus = rowCampaign?.status || row.status || 'waiting'
+        const rowGmailAccount = gmailAccounts.find(
+          (account) => account.id === row.gmailAccountId
+        )
 
         return (
         <section className="compact-send-panel compact-sender-row" key={row.id}>
@@ -2042,8 +2131,18 @@ function App() {
               }`}
             />
             <div>
-              <strong>{isApiSending ? 'Gmail API connection' : row.profileName}</strong>
-              <span>{isApiSending ? 'connection required' : rowStatus}</span>
+              <strong>
+                {isApiSending
+                  ? rowGmailAccount?.email || 'Gmail API connection'
+                  : row.profileName}
+              </strong>
+              <span>
+                {isApiSending
+                  ? rowGmailAccount
+                    ? 'connected'
+                    : 'connection required'
+                  : rowStatus}
+              </span>
             </div>
             {!isApiSending && (
               <button
