@@ -637,6 +637,7 @@ function App() {
       const result = await window.electronAPI.connectGmail({
         clientId,
         clientSecret,
+        browserProfileId: 'api-main',
       })
       if (!result?.success || !result.account) {
         setGmailConnectionError(
@@ -688,6 +689,7 @@ function App() {
       const result = await window.electronAPI.connectGmail({
         clientId,
         clientSecret,
+        browserProfileId: row.id,
       })
       if (!result?.success || !result.account) {
         setSenderRowField(

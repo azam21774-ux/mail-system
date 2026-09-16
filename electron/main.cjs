@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, safeStorage } = require('electron')
+const { app, BrowserWindow, ipcMain, safeStorage } = require('electron')
 const { spawn, execFile } = require('child_process')
 const crypto = require('crypto')
 const http = require('http')
@@ -50,6 +50,51 @@ function getChromePath() {
         : ['/usr/bin/google-chrome', '/usr/bin/chromium']
 
   return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || null
+}
+
+function openOAuthInChrome(authorizationUrl, profileKey = 'api-main') {
+  return new Promise((resolve, reject) => {
+    const chromePath = getChromePath()
+    if (!chromePath) {
+      reject(new Error('Google Chrome was not found. Install Chrome to connect Gmail.'))
+      return
+    }
+
+    const safeProfileKey = String(profileKey)
+      .replace(/[^a-zA-Z0-9_-]/g, '-')
+      .slice(0, 80)
+    const profileDir = path.join(
+      profilesRoot,
+      `api-oauth-${safeProfileKey || 'main'}`
+    )
+    fs.mkdirSync(profileDir, { recursive: true })
+
+    const chromeArgs = [
+      `--user-data-dir=${profileDir}`,
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--new-window',
+      authorizationUrl,
+    ]
+    const macLauncher = '/usr/bin/open'
+    const useMacLauncher =
+      process.platform === 'darwin' && fs.existsSync(macLauncher)
+    const launchCommand = useMacLauncher ? macLauncher : chromePath
+    const launchArgs = useMacLauncher
+      ? ['-na', '/Applications/Google Chrome.app', '--args', ...chromeArgs]
+      : chromeArgs
+    const chrome = spawn(launchCommand, launchArgs, {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: process.platform === 'win32',
+    })
+
+    chrome.once('error', reject)
+    chrome.once('spawn', () => {
+      chrome.unref()
+      resolve(true)
+    })
+  })
 }
 
 function runCommand(command, args) {
@@ -182,6 +227,10 @@ async function connectGmailAccount(credentials = {}) {
     typeof credentials === 'string' ? credentials : credentials.clientId
   const clientSecret =
     typeof credentials === 'string' ? '' : String(credentials.clientSecret || '').trim()
+  const browserProfileId =
+    typeof credentials === 'string'
+      ? 'api-main'
+      : credentials.browserProfileId || 'api-main'
   const clientId = getGmailOAuthClientId(clientIdOverride)
   if (!clientId) {
     throw new Error(
@@ -217,10 +266,7 @@ async function connectGmailAccount(credentials = {}) {
     }).toString()
 
     const callbackPromise = waitForGoogleOAuthCallback(server, state)
-    const opened = await shell.openExternal(authorizationUrl.toString())
-    if (opened === false) {
-      throw new Error('Could not open the Google login page in Chrome.')
-    }
+    await openOAuthInChrome(authorizationUrl.toString(), browserProfileId)
 
     const { code } = await callbackPromise
     const tokenRequest = {
