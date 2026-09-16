@@ -1762,7 +1762,7 @@ function App() {
 
       <section className="campaign-builder">
         <div className="campaign-form">
-          <div className="form-card">
+          <div className="form-card campaign-details-card">
             <div className="form-card-header">
               <div>
                 <h3>Campaign Details</h3>
@@ -1779,7 +1779,7 @@ function App() {
             />
           </div>
 
-          <div className="form-card">
+          <div className="form-card profile-picker-card">
             <div className="form-card-header">
               <div>
                 <h3>Run with Profiles</h3>
@@ -1898,7 +1898,34 @@ function App() {
             </div>
           </div>
 
-          <div className="form-card">
+          <div className="form-card custom-tfn-card">
+            <div className="form-card-header">
+              <div>
+                <h3>TFN Variable</h3>
+                <p>Use this value wherever you add {'{{tfn}}'}.</p>
+              </div>
+            </div>
+
+            <div className="custom-variable-row">
+              <button
+                type="button"
+                className="tag custom-variable-tag"
+                onClick={() => insertTag('{{tfn}}')}
+                title="Insert {{tfn}}"
+              >
+                {'{{tfn}}'}
+              </button>
+              <input
+                className="text-input custom-variable-input"
+                value={tfnValue}
+                onChange={(event) => setTfnValue(event.target.value)}
+                placeholder="TFN value"
+                aria-label="TFN value"
+              />
+            </div>
+          </div>
+
+          <div className="form-card recipients-card">
             <div className="form-card-header">
               <div>
                 <h3>Recipients</h3>
@@ -1967,7 +1994,7 @@ function App() {
             )}
           </div>
 
-          <div className="form-card">
+          <div className="form-card attachment-card">
             <div className="form-card-header">
               <div>
                 <h3>Attachment</h3>
@@ -2107,7 +2134,7 @@ function App() {
             )}
           </div>
 
-          <div className="form-card">
+          <div className="form-card subject-card">
             <div className="form-card-header">
               <div>
                 <h3>Subject (Optional)</h3>
@@ -2124,7 +2151,7 @@ function App() {
             />
           </div>
 
-          <div className="form-card">
+          <div className="form-card body-card">
             <div className="form-card-header">
               <div>
                 <h3>Email Body (Optional)</h3>
@@ -2161,7 +2188,7 @@ function App() {
             )}
           </div>
 
-          <div className="form-card">
+          <div className="form-card tags-card">
             <div className="form-card-header">
               <div>
                 <h3>Tags / Variables</h3>
@@ -2184,27 +2211,6 @@ function App() {
                     <small>{tag}</small>
                   </button>
                 ))}
-              </div>
-            </div>
-
-            <div className="tag-group">
-              <span className="tag-group-label">Custom variable</span>
-              <div className="custom-variable-row">
-                <button
-                  type="button"
-                  className="tag custom-variable-tag"
-                  onClick={() => insertTag('{{tfn}}')}
-                  title="Insert {{tfn}}"
-                >
-                  {'{{tfn}}'}
-                </button>
-                <input
-                  className="text-input custom-variable-input"
-                  value={tfnValue}
-                  onChange={(event) => setTfnValue(event.target.value)}
-                  placeholder="TFN value"
-                  aria-label="TFN value"
-                />
               </div>
             </div>
 

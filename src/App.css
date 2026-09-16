@@ -2391,31 +2391,41 @@ nav {
   box-shadow: 0 10px 35px rgba(0, 0, 0, 0.18);
 }
 
-.compact-campaign-shell .form-card:nth-child(1) {
-  grid-column: span 3;
+.compact-campaign-shell .campaign-details-card,
+.compact-campaign-shell .profile-picker-card,
+.compact-campaign-shell .recipients-card,
+.compact-campaign-shell .subject-card,
+.compact-campaign-shell .body-card {
+  display: none;
 }
 
-.compact-campaign-shell .form-card:nth-child(2) {
-  grid-column: span 3;
+.compact-campaign-shell .custom-tfn-card {
+  grid-column: 5 / span 6;
+  grid-row: 1;
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  justify-content: center;
 }
 
-.compact-campaign-shell .form-card:nth-child(3),
-.compact-campaign-shell .form-card:nth-child(4) {
-  grid-column: span 2;
-}
-
-.compact-campaign-shell .form-card:nth-child(5) {
-  grid-column: span 2;
-}
-
-.compact-campaign-shell .form-card:nth-child(6),
-.compact-campaign-shell .form-card:nth-child(9) {
+.compact-campaign-shell .attachment-card {
   grid-column: 1 / -1;
 }
 
-.compact-campaign-shell .form-card:nth-child(7),
-.compact-campaign-shell .form-card:nth-child(8) {
-  grid-column: span 6;
+.compact-campaign-shell .tags-card {
+  grid-column: 1 / -1;
+}
+
+.compact-campaign-shell .campaign-details-card {
+  grid-column: span 3;
+}
+
+.compact-campaign-shell .profile-picker-card {
+  grid-column: span 3;
+}
+
+.compact-campaign-shell .delay-card {
+  grid-column: span 2;
 }
 
 .compact-campaign-shell .form-card-header {
@@ -2690,15 +2700,16 @@ nav {
   }
 
   .compact-campaign-shell .form-card,
-  .compact-campaign-shell .form-card:nth-child(7),
-  .compact-campaign-shell .form-card:nth-child(8) {
+  .compact-campaign-shell .custom-tfn-card {
     grid-column: span 1;
   }
 
-  .compact-campaign-shell .form-card:nth-child(6),
-  .compact-campaign-shell .form-card:nth-child(9),
+  .compact-campaign-shell .custom-tfn-card,
+  .compact-campaign-shell .attachment-card,
+  .compact-campaign-shell .tags-card,
   .compact-campaign-shell .campaign-footer {
     grid-column: 1 / -1;
+    grid-row: auto;
   }
 }
 
@@ -3085,10 +3096,7 @@ nav {
 }
 
 .compact-campaign-shell .form-card:nth-child(1),
-.compact-campaign-shell .form-card:nth-child(2),
-.compact-campaign-shell .form-card:nth-child(5),
-.compact-campaign-shell .form-card:nth-child(7),
-.compact-campaign-shell .form-card:nth-child(8) {
+.compact-campaign-shell .form-card:nth-child(2) {
   display: none;
 }
 
