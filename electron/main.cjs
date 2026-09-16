@@ -1417,13 +1417,27 @@ ipcMain.handle('open-chrome-profile', async (_event, profileId, port) => {
     // Unique debugging port for each profile.
     const debugPort = Number(port) || 9222
 
-    const chrome = spawn(chromePath, [
+    const chromeArgs = [
       `--user-data-dir=${profileDir}`,
       `--remote-debugging-port=${debugPort}`,
       '--no-first-run',
       '--no-default-browser-check',
+      '--new-window',
       'https://mail.google.com/mail/u/0/#inbox',
-    ], {
+    ]
+
+    // macOS can route a direct Chrome executable launch into the already
+    // running instance. `open -na` forces a new Chrome app instance so each
+    // isolated user-data-dir stays attached to its own sender profile.
+    const chromeLauncher = '/usr/bin/open'
+    const launchCommand = fs.existsSync(chromeLauncher)
+      ? chromeLauncher
+      : chromePath
+    const launchArgs = launchCommand === chromeLauncher
+      ? ['-na', '/Applications/Google Chrome.app', '--args', ...chromeArgs]
+      : chromeArgs
+
+    const chrome = spawn(launchCommand, launchArgs, {
       detached: true,
       stdio: 'ignore',
     })
