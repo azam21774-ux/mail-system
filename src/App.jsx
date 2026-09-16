@@ -525,6 +525,7 @@ function App() {
   ])
   const [senderRows, setSenderRows] = useState([])
   const senderRowsRef = useRef([])
+  const [isPrimaryApiRowVisible, setIsPrimaryApiRowVisible] = useState(true)
 
   const [showAdd, setShowAdd] = useState(false)
   const [profileName, setProfileName] = useState('')
@@ -1511,6 +1512,18 @@ function App() {
     setSenderRows((previous) => previous.filter((item) => item.id !== row.id))
   }
 
+  const deletePrimaryApiRow = () => {
+    if (primaryCampaignRunning && liveCampaign?.status === 'Running') {
+      void stopCampaign(liveCampaign)
+    }
+
+    setSelectedGmailAccountId('')
+    setGmailConnectionError('')
+    setGmailOAuthClientId('')
+    setGmailOAuthClientSecret('')
+    setIsPrimaryApiRowVisible(false)
+  }
+
   const generateAttachment = async () => {
     if (!attachmentHtml.trim()) {
       alert('Enter HTML content before generating an attachment.')
@@ -2077,6 +2090,7 @@ function App() {
         </button>
       </section>
 
+      {(!isApiSending || isPrimaryApiRowVisible) && (
       <section className="compact-send-panel">
         <div className="compact-row-number">1</div>
 
@@ -2210,6 +2224,17 @@ function App() {
               </button>
             </div>
           )}
+          {isApiSending && (
+            <button
+              type="button"
+              className="compact-delete-profile compact-row-delete"
+              onClick={deletePrimaryApiRow}
+              aria-label="Delete Gmail API row 1"
+              title="Delete API sender row"
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
         </div>
 
         <div className="compact-message-cell">
@@ -2295,6 +2320,7 @@ function App() {
           </button>
         </div>
       </section>
+      )}
 
       {senderRows.map((row) => {
         const rowCampaign = row.campaignId
@@ -2621,8 +2647,8 @@ function App() {
               <div>
                 <h3>Sending Delay</h3>
                 <p>
-                  Wait between recipients. API Sending uses up to 4 parallel
-                  sends when set to 0s.
+                  API sends stay sequential. At 0s the next send starts
+                  immediately; at 1s it waits one second.
                 </p>
               </div>
               <div className="delay-value">

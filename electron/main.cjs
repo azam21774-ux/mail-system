@@ -481,14 +481,15 @@ function createMimeMessage({
   return headers.join('\r\n')
 }
 
-async function sendGmailApiMessage(accountId, message) {
-  const accessToken = await getGmailAccessToken(accountId)
+async function sendGmailApiMessage(accountId, message, accessToken = null) {
+  const resolvedAccessToken =
+    accessToken || (await getGmailAccessToken(accountId))
   const response = await fetch(
     'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
     {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${resolvedAccessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -1981,9 +1982,16 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
     const connection = await connectToGmail(payload.port)
     browser = connection.browser
 
-    const processApiRecipient = async (row) => {
+    for (const row of recipients) {
       if (job.cancelled) {
-        return
+        emitProgress({
+          status: 'Paused',
+          sent,
+          failed,
+          pending: Math.max(totalRecipients - startIndex - processed, 0),
+          nextRecipientIndex: startIndex + processed,
+        })
+        return { success: false, cancelled: true, sent, failed }
       }
 
       const email = getRecipientValue(row, 'email')
@@ -2043,43 +2051,9 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
           fs.unlinkSync(recipientAttachmentPath)
         }
       }
-    }
-
-    const delayMilliseconds = Math.max(Number(payload.delaySeconds) || 0, 0) * 1000
-    if (delayMilliseconds > 0) {
-      for (const row of recipients) {
-        await processApiRecipient(row)
-        if (job.cancelled) break
-        if (processed < recipients.length) {
-          await wait(delayMilliseconds)
-        }
+      if (payload.delaySeconds > 0 && processed < recipients.length) {
+        await wait(Number(payload.delaySeconds) * 1000)
       }
-    } else {
-      let nextRecipientIndex = 0
-      const worker = async () => {
-        while (!job.cancelled) {
-          const index = nextRecipientIndex
-          nextRecipientIndex += 1
-          if (index >= recipients.length) return
-          await processApiRecipient(recipients[index])
-        }
-      }
-
-      const workerCount = Math.min(4, recipients.length)
-      await Promise.all(
-        Array.from({ length: workerCount }, () => worker())
-      )
-    }
-
-    if (job.cancelled) {
-      emitProgress({
-        status: 'Paused',
-        sent,
-        failed,
-        pending: Math.max(totalRecipients - startIndex - processed, 0),
-        nextRecipientIndex: startIndex + processed,
-      })
-      return { success: false, cancelled: true, sent, failed }
     }
 
     emitProgress({
@@ -2172,8 +2146,12 @@ ipcMain.handle('run-api-campaign', async (_event, payload) => {
       }
     }
 
-    // Validate the account and refresh its token before starting the batch.
-    await getGmailAccessToken(payload.gmailAccountId)
+    // Validate the account and refresh its token once before starting the batch.
+    // Reusing this token keeps sequential API sending fast without changing
+    // the delay selected by the user.
+    const accessToken = await getGmailAccessToken(payload.gmailAccountId)
+    const delayMilliseconds =
+      Math.max(Number(payload.delaySeconds) || 0, 0) * 1000
 
     for (const row of recipients) {
       if (job.cancelled) {
@@ -2218,7 +2196,11 @@ ipcMain.handle('run-api-campaign', async (_event, payload) => {
           attachmentPath: recipientAttachmentPath,
         })
 
-        await sendGmailApiMessage(payload.gmailAccountId, message)
+        await sendGmailApiMessage(
+          payload.gmailAccountId,
+          message,
+          accessToken
+        )
         sent += 1
         processed += 1
         emitProgress({
@@ -2252,8 +2234,8 @@ ipcMain.handle('run-api-campaign', async (_event, payload) => {
         }
       }
 
-      if (payload.delaySeconds > 0 && processed < recipients.length) {
-        await wait(Number(payload.delaySeconds) * 1000)
+      if (delayMilliseconds > 0 && processed < recipients.length) {
+        await wait(delayMilliseconds)
       }
     }
 
