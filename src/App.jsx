@@ -1474,9 +1474,9 @@ function App() {
       return
     }
 
+    const hadProfiles = profiles.length > 0
     const nextProfileId =
       profiles.reduce((highest, profile) => Math.max(highest, profile.id), 0) + 1
-    const nextRowNumber = senderRows.length + 2
     const newProfile = {
       id: nextProfileId,
       name: `Chrome Profile ${nextProfileId}`,
@@ -1487,6 +1487,23 @@ function App() {
     }
 
     setProfiles((previous) => [...previous, newProfile])
+
+    if (!hadProfiles) {
+      setSelectedProfileIds([String(newProfile.id)])
+      setSenderRows((previous) =>
+        previous.filter((row) => !row.profileId)
+      )
+      void openProfile(newProfile)
+      addActivity(
+        'profile',
+        'Chrome Profile 1 added',
+        'Chrome Profile 1 was opened for Gmail login.'
+      )
+      return
+    }
+
+    const nextRowNumber =
+      senderRows.filter((row) => row.profileId !== undefined).length + 2
     setSenderRows((previous) => [
       ...previous,
       {
@@ -2340,7 +2357,13 @@ function App() {
       </section>
       )}
 
-      {senderRows.map((row) => {
+      {senderRows
+        .filter(
+          (row) =>
+            isApiSending ||
+            profiles.some((profile) => profile.id === row.profileId)
+        )
+        .map((row) => {
         const rowCampaign = row.campaignId
           ? campaigns.find((campaign) => campaign.id === row.campaignId)
           : null
