@@ -19,7 +19,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopCampaign: (campaignId) =>
     ipcRenderer.invoke('stop-campaign', campaignId),
 
-  connectGmail: () => ipcRenderer.invoke('connect-gmail'),
+  connectGmail: (clientId) => ipcRenderer.invoke('connect-gmail', clientId),
 
   listGmailAccounts: () => ipcRenderer.invoke('list-gmail-accounts'),
 

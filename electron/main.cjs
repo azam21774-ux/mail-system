@@ -67,9 +67,12 @@ function runCommand(command, args) {
 const wait = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds))
 
-function getGmailOAuthClientId() {
+function getGmailOAuthClientId(clientIdOverride = '') {
   return String(
-    process.env.GOOGLE_OAUTH_CLIENT_ID || packagedGmailOAuthClientId || ''
+    clientIdOverride ||
+      process.env.GOOGLE_OAUTH_CLIENT_ID ||
+      packagedGmailOAuthClientId ||
+      ''
   ).trim()
 }
 
@@ -168,8 +171,8 @@ function waitForGoogleOAuthCallback(server, expectedState) {
   )
 }
 
-async function connectGmailAccount() {
-  const clientId = getGmailOAuthClientId()
+async function connectGmailAccount(clientIdOverride) {
+  const clientId = getGmailOAuthClientId(clientIdOverride)
   if (!clientId) {
     throw new Error(
       'Google OAuth is not configured in this desktop build. Reinstall the latest Mail System installer.'
@@ -1755,9 +1758,9 @@ function createWindow() {
   }
 }
 
-ipcMain.handle('connect-gmail', async () => {
+ipcMain.handle('connect-gmail', async (_event, clientId) => {
   try {
-    return { success: true, account: await connectGmailAccount() }
+    return { success: true, account: await connectGmailAccount(clientId) }
   } catch (error) {
     return {
       success: false,

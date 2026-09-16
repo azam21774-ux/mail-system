@@ -574,6 +574,10 @@ function App() {
   const [gmailAccounts, setGmailAccounts] = useState([])
   const [selectedGmailAccountId, setSelectedGmailAccountId] = useState('')
   const [isConnectingGmail, setIsConnectingGmail] = useState(false)
+  const [gmailOAuthClientId, setGmailOAuthClientId] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    return window.localStorage.getItem('mail-system-google-oauth-client-id') || ''
+  })
 
   const sendingModes = [
     { name: 'UI Sending', icon: Mail },
@@ -614,10 +618,19 @@ function App() {
       return
     }
 
+    const clientId = gmailOAuthClientId.trim()
+    if (!clientId || !clientId.endsWith('.apps.googleusercontent.com')) {
+      alert(
+        'Enter a valid Google OAuth Client ID ending with .apps.googleusercontent.com.'
+      )
+      return
+    }
+
+    window.localStorage.setItem('mail-system-google-oauth-client-id', clientId)
     setIsConnectingGmail(true)
 
     try {
-      const result = await window.electronAPI.connectGmail()
+      const result = await window.electronAPI.connectGmail(clientId)
       if (!result?.success || !result.account) {
         alert(result?.error || 'Could not connect this Gmail account.')
         return
@@ -1954,35 +1967,46 @@ function App() {
           </div>
           {isApiSending ? (
             <div className="compact-api-account-actions">
-              {gmailAccounts.length > 0 && (
-                <select
-                  className="compact-gmail-account-select"
-                  value={selectedGmailAccountId}
-                  onChange={(event) =>
-                    setSelectedGmailAccountId(event.target.value)
-                  }
-                  aria-label="Gmail API account"
+              <input
+                className="compact-gmail-client-id-input"
+                value={gmailOAuthClientId}
+                onChange={(event) => setGmailOAuthClientId(event.target.value)}
+                placeholder="Google OAuth Client ID"
+                aria-label="Google OAuth Client ID"
+                title="Use a Desktop OAuth Client ID ending in .apps.googleusercontent.com"
+                spellCheck="false"
+              />
+              <div className="compact-api-account-row">
+                {gmailAccounts.length > 0 && (
+                  <select
+                    className="compact-gmail-account-select"
+                    value={selectedGmailAccountId}
+                    onChange={(event) =>
+                      setSelectedGmailAccountId(event.target.value)
+                    }
+                    aria-label="Gmail API account"
+                  >
+                    {gmailAccounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.email}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  type="button"
+                  className="compact-api-connection-badge"
+                  onClick={connectGmail}
+                  disabled={isConnectingGmail}
+                  title="Connect another Gmail account with OAuth"
                 >
-                  {gmailAccounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.email}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <button
-                type="button"
-                className="compact-api-connection-badge"
-                onClick={connectGmail}
-                disabled={isConnectingGmail}
-                title="Connect another Gmail account with OAuth"
-              >
-                {isConnectingGmail
-                  ? 'Opening…'
-                  : gmailAccounts.length
-                    ? '+ Gmail'
-                    : 'Connect Gmail'}
-              </button>
+                  {isConnectingGmail
+                    ? 'Opening…'
+                    : gmailAccounts.length
+                      ? '+ Gmail'
+                      : 'Connect Gmail'}
+                </button>
+              </div>
             </div>
           ) : (
             <select

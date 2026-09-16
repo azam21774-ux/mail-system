@@ -2875,6 +2875,37 @@ nav {
 .compact-api-account-actions {
   display: flex;
   flex: 1 1 100%;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.compact-gmail-client-id-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 27px;
+  border: 1px solid #303944;
+  border-radius: 4px;
+  padding: 4px 6px;
+  background: #080a0d;
+  color: #aeb9c5;
+  font-family: inherit;
+  font-size: 9px;
+}
+
+.compact-gmail-client-id-input::placeholder {
+  color: #5e6874;
+}
+
+.compact-gmail-client-id-input:focus {
+  border-color: #f59e0b;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.12);
+}
+
+.compact-api-account-row {
+  display: flex;
   align-items: center;
   gap: 5px;
   min-width: 0;
