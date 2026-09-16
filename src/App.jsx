@@ -511,7 +511,7 @@ function ProfileStats({ campaigns, profileId }) {
 }
 
 function App() {
-  const [active, setActive] = useState('Dashboard')
+  const [active, setActive] = useState('UI Sending')
 
   const [profiles, setProfiles] = useState([
     {
@@ -578,6 +578,11 @@ function App() {
     { name: 'Campaigns', icon: Megaphone },
     { name: 'Activity Log', icon: Activity },
     { name: 'Settings', icon: Settings },
+  ]
+
+  const sendingModes = [
+    { name: 'UI Sending', icon: Mail },
+    { name: 'API Sending', icon: Code },
   ]
 
   const addActivity = (type, title, detail) => {
@@ -1645,14 +1650,28 @@ function App() {
     selectedProfile?.running ? 'Running' : 'Ready'
   )
   const primaryCampaignRunning = liveCampaign?.status === 'Running'
+  const isApiSending = active === 'API Sending'
+  const isSendingMode = active === 'UI Sending' || isApiSending
+
+  const showApiConnectionRequired = () => {
+    alert(
+      'Gmail API is not connected yet. Connect the Gmail integration to enable API Sending.'
+    )
+  }
 
   const campaignComposer = (
     <div className="content compact-campaign-shell">
       <section className="page-title-row">
         <div>
-          <span className="eyebrow">MAIL SYSTEM</span>
-          <h2>Gmail Sender</h2>
-          <p>One compact workspace for profiles, recipients and delivery.</p>
+          <span className="eyebrow">
+            {isApiSending ? 'GMAIL API SENDING' : 'MAIL SYSTEM'}
+          </span>
+          <h2>{isApiSending ? 'Gmail API Sender' : 'Gmail Sender'}</h2>
+          <p>
+            {isApiSending
+              ? 'Same compact workspace using the official Gmail API.'
+              : 'One compact workspace for profiles, recipients and delivery.'}
+          </p>
         </div>
 
         <button
@@ -1668,27 +1687,43 @@ function App() {
         <div className="compact-row-number">1</div>
 
         <div className="compact-profile-cell">
-          <span className={`compact-status-dot ${compactStatus.toLowerCase()}`} />
+          <span
+            className={`compact-status-dot ${
+              isApiSending ? 'api' : compactStatus.toLowerCase()
+            }`}
+          />
           <div>
-            <strong>{selectedProfile?.name || 'No Chrome profile'}</strong>
-            <span>{compactStatus.toLowerCase()}</span>
+            <strong>
+              {isApiSending
+                ? 'Gmail API connection'
+                : selectedProfile?.name || 'No Chrome profile'}
+            </strong>
+            <span>
+              {isApiSending ? 'connection required' : compactStatus.toLowerCase()}
+            </span>
           </div>
-          <select
-            className="compact-profile-select"
-            value={selectedProfileIds[0] || ''}
-            onChange={(event) =>
-              setSelectedProfileIds(event.target.value ? [event.target.value] : [])
-            }
-            aria-label="Chrome profile"
-          >
-            <option value="">Choose profile</option>
-            {profiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.name}
-              </option>
-            ))}
-          </select>
-          {selectedProfile && (
+          {isApiSending ? (
+            <span className="compact-api-connection-badge">OAuth needed</span>
+          ) : (
+            <select
+              className="compact-profile-select"
+              value={selectedProfileIds[0] || ''}
+              onChange={(event) =>
+                setSelectedProfileIds(
+                  event.target.value ? [event.target.value] : []
+                )
+              }
+              aria-label="Chrome profile"
+            >
+              <option value="">Choose profile</option>
+              {profiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+          )}
+          {!isApiSending && selectedProfile && (
             <div className="compact-profile-actions">
               <button type="button" onClick={() => openProfile(selectedProfile)}>
                 Open
@@ -1708,7 +1743,9 @@ function App() {
 
         <div className="compact-message-cell">
           <span className="compact-recipient-label">
-            {selectedProfile?.name || 'recipient account'}
+            {isApiSending
+              ? 'Gmail API account'
+              : selectedProfile?.name || 'recipient account'}
           </span>
           <input
             className="compact-subject-input"
@@ -1771,7 +1808,9 @@ function App() {
             type="button"
             className="compact-send-button"
              onClick={() =>
-               primaryCampaignRunning
+                isApiSending
+                  ? showApiConnectionRequired()
+                  : primaryCampaignRunning
                  ? stopCampaign(liveCampaign)
                  : sendCurrentCampaign()
              }
@@ -1799,30 +1838,36 @@ function App() {
           <div className="compact-row-number">{row.rowNumber}</div>
 
           <div className="compact-profile-cell">
-            <span className={`compact-status-dot ${row.status || 'waiting'}`} />
+            <span
+              className={`compact-status-dot ${
+                isApiSending ? 'api' : row.status || 'waiting'
+              }`}
+            />
             <div>
-              <strong>{row.profileName}</strong>
-              <span>{rowStatus}</span>
+              <strong>{isApiSending ? 'Gmail API connection' : row.profileName}</strong>
+              <span>{isApiSending ? 'connection required' : rowStatus}</span>
             </div>
-            <button
-              type="button"
-              className="compact-delete-profile compact-row-delete"
-              onClick={() => {
-                const profile = profiles.find(
-                  (item) => item.id === row.profileId
-                )
-                if (profile) deleteProfile(profile)
-              }}
-              aria-label={`Delete Chrome Profile ${row.profileId}`}
-              title="Delete profile"
-            >
-              <Trash2 size={13} />
-            </button>
+            {!isApiSending && (
+              <button
+                type="button"
+                className="compact-delete-profile compact-row-delete"
+                onClick={() => {
+                  const profile = profiles.find(
+                    (item) => item.id === row.profileId
+                  )
+                  if (profile) deleteProfile(profile)
+                }}
+                aria-label={`Delete Chrome Profile ${row.profileId}`}
+                title="Delete profile"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
           </div>
 
           <div className="compact-message-cell">
             <span className="compact-recipient-label">
-              Chrome Profile {row.profileId}
+              {isApiSending ? 'Gmail API account' : `Chrome Profile ${row.profileId}`}
             </span>
             <input
               className="compact-subject-input"
@@ -1878,13 +1923,14 @@ function App() {
               type="button"
               className="compact-send-button"
               onClick={() =>
-                rowCampaign?.status === 'Running'
+                 isApiSending
+                   ? showApiConnectionRequired()
+                   : rowCampaign?.status === 'Running'
                   ? stopCampaign(rowCampaign)
                   : sendSenderRow(row)
               }
               disabled={
-                row.status !== 'ready' ||
-                !row.recipientCount
+                 !isApiSending && (row.status !== 'ready' || !row.recipientCount)
               }
             >
               {rowCampaign?.status === 'Running' ? (
@@ -2455,14 +2501,8 @@ function App() {
   )
 
   return (
-    <div className="app compact-campaign-mode">
-      <main className="main">{campaignComposer}</main>
-    </div>
-  )
-
-  return (
     <div
-      className={`app ${
+      className={`app ${isSendingMode ? 'sending-mode' : ''} ${
         active === 'Campaigns' && showCreateCampaign
           ? 'compact-campaign-mode'
           : ''
@@ -2491,6 +2531,23 @@ function App() {
           ))}
         </nav>
 
+         <div className="menu-label sending-menu-label">SENDING</div>
+         <nav>
+           {sendingModes.map(({ name, icon: Icon }) => (
+             <button
+               key={name}
+               className={`nav-item ${active === name ? 'active' : ''}`}
+               onClick={() => {
+                 setActive(name)
+                 setShowCreateCampaign(false)
+               }}
+             >
+               <Icon size={18} />
+               <span>{name}</span>
+             </button>
+           ))}
+         </nav>
+
         <div className="sidebar-bottom">
           <div className="system-status">
             <span className="status-dot" />
@@ -2501,7 +2558,7 @@ function App() {
       </aside>
 
       <main className="main">
-        <header className="header">
+          <header className="header">
           <div>
             <h1>{active}</h1>
             <p>
@@ -2526,7 +2583,7 @@ function App() {
           </button>
         </header>
 
-        {active === 'Dashboard' && (
+         {active === 'Dashboard' && (
           <div className="content">
             <section className="welcome">
               <div>
@@ -3037,6 +3094,8 @@ function App() {
         {active === 'Campaigns' &&
           showCreateCampaign &&
           campaignComposer}
+
+        {isSendingMode && campaignComposer}
 
         {active === 'Activity Log' && (
           <div className="content">
