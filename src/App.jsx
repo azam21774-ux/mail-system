@@ -23,6 +23,7 @@ import {
   CalendarDays,
   Clock3,
   Keyboard,
+  KeyRound,
 } from 'lucide-react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
@@ -525,7 +526,135 @@ function ProfileStats({ campaigns, profileId }) {
   )
 }
 
-function App() {
+function ActivationGate() {
+  const hasLicenseBridge = Boolean(window.electronAPI?.validateLicense)
+  const [status, setStatus] = useState(hasLicenseBridge ? 'checking' : 'ready')
+  const [username, setUsername] = useState('')
+  const [licenseKey, setLicenseKey] = useState('')
+  const [error, setError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (!hasLicenseBridge) return undefined
+
+    let mounted = true
+    window.electronAPI.validateLicense().then((result) => {
+      if (!mounted) return
+      setStatus(result?.success && result?.activated ? 'ready' : 'activation')
+      if (result?.error) setError(result.error)
+    }).catch((validationError) => {
+      if (!mounted) return
+      setStatus('activation')
+      setError(validationError.message || 'Could not check the license.')
+    })
+
+    return () => {
+      mounted = false
+    }
+  }, [hasLicenseBridge])
+
+  if (!hasLicenseBridge || status === 'ready') {
+    return <MailSystemApp />
+  }
+
+  if (status === 'checking') {
+    return (
+      <div className="license-gate license-gate-loading">
+        <div className="license-card">
+          <div className="license-icon"><KeyRound size={22} /></div>
+          <strong>Checking activation</strong>
+          <span>Connecting to the Mail System license server…</span>
+        </div>
+      </div>
+    )
+  }
+
+  const activate = async (event) => {
+    event.preventDefault()
+    const cleanUsername = username.trim()
+    const cleanLicenseKey = licenseKey.trim()
+    if (!cleanUsername || !cleanLicenseKey) {
+      setError(
+        !cleanUsername
+          ? 'Enter your username.'
+          : 'Enter your license key.'
+      )
+      return
+    }
+
+    setError('')
+    setIsSubmitting(true)
+    try {
+      const result = await window.electronAPI.activateLicense({
+        username: cleanUsername,
+        licenseKey: cleanLicenseKey,
+      })
+      if (!result?.success || !result?.activated) {
+        setError(result?.error || 'Could not activate this license.')
+        return
+      }
+      setStatus('ready')
+    } catch (activationError) {
+      setError(activationError.message || 'Could not activate this license.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="license-gate">
+      <form className="license-card" onSubmit={activate}>
+        <div className="license-icon"><KeyRound size={22} /></div>
+        <h1>Activate Mail System</h1>
+        <p>Enter the username created by your administrator and its license key.</p>
+
+        <label htmlFor="license-username">Username</label>
+        <input
+          id="license-username"
+          value={username}
+          onChange={(event) => {
+            setUsername(event.target.value)
+            setError('')
+          }}
+          placeholder="Username"
+          autoComplete="username"
+          autoFocus
+        />
+        {error && !username.trim() && <span className="license-field-error">Enter your username.</span>}
+
+        <label htmlFor="license-key">License key</label>
+        <div className="license-key-input">
+          <KeyRound size={18} />
+          <input
+            id="license-key"
+            value={licenseKey}
+            onChange={(event) => {
+              setLicenseKey(event.target.value.toUpperCase())
+              setError('')
+            }}
+            placeholder="MM-XXXXXX-XXXXXX-XXXXXX"
+            autoComplete="off"
+            spellCheck="false"
+          />
+        </div>
+        {error && username.trim() && (
+          <span className="license-field-error">{error}</span>
+        )}
+
+        <button className="license-submit" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? 'Activating…' : 'Activate License'}
+        </button>
+        {!error && (
+          <span className="license-help">
+            Contact your administrator if you need a new key.
+          </span>
+        )}
+      </form>
+    </div>
+  )
+}
+
+function MailSystemApp() {
   const [active, setActive] = useState('UI Sending')
 
   const [profiles, setProfiles] = useState([
@@ -3924,4 +4053,4 @@ function App() {
   )
 }
 
-export default App
+export default ActivationGate

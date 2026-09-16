@@ -27,6 +27,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   disconnectGmail: (accountId) =>
     ipcRenderer.invoke('disconnect-gmail', accountId),
 
+  validateLicense: () => ipcRenderer.invoke('validate-license'),
+
+  activateLicense: (payload) =>
+    ipcRenderer.invoke('activate-license', payload),
+
+  deactivateLicense: () => ipcRenderer.invoke('deactivate-license'),
+
   renderHtmlAsset: (payload) =>
     ipcRenderer.invoke('render-html-asset', payload),
 

@@ -10,14 +10,97 @@ const ExcelJS = require('exceljs')
 const { Document, ImageRun, Packer, Paragraph } = require('docx')
 const PptxGenJS = require('pptxgenjs')
 const { gmailOAuthClientId: packagedGmailOAuthClientId } = require('./oauth-config.cjs')
+const { licenseServerUrl: packagedLicenseServerUrl } = require('./license-config.cjs')
 
 const profilesRoot = path.join(app.getPath('userData'), 'chrome-profiles')
 const gmailAccountsFile = path.join(app.getPath('userData'), 'gmail-accounts.json')
+const licenseSessionFile = path.join(app.getPath('userData'), 'license-session.json')
 const gmailOAuthScope =
   'openid email https://www.googleapis.com/auth/gmail.send'
 const campaignJobs = new Map()
 
 let mainWindow
+
+function getLicenseServerUrl() {
+  return String(process.env.LICENSE_SERVER_URL || packagedLicenseServerUrl || '')
+    .trim()
+    .replace(/\/+$/, '')
+}
+
+function readLicenseSession() {
+  try {
+    return JSON.parse(fs.readFileSync(licenseSessionFile, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+function writeLicenseSession(session) {
+  fs.writeFileSync(licenseSessionFile, JSON.stringify(session, null, 2), 'utf8')
+}
+
+function clearLicenseSession() {
+  try {
+    fs.rmSync(licenseSessionFile, { force: true })
+  } catch {
+    // The session is already cleared.
+  }
+}
+
+async function requestLicenseServer(endpoint, payload) {
+  const baseUrl = getLicenseServerUrl()
+  if (!baseUrl) {
+    return {
+      success: false,
+      error:
+        'License server is not configured. Reinstall a build connected to the administrator server.',
+    }
+  }
+
+  const response = await fetch(`${baseUrl}${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(12000),
+  })
+  const result = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    return {
+      success: false,
+      error: result.error || 'The license server rejected this request.',
+    }
+  }
+  return result
+}
+
+async function validateStoredLicense() {
+  const session = readLicenseSession()
+  if (!session?.token) {
+    return { success: false, activated: false }
+  }
+
+  try {
+    const result = await requestLicenseServer('/api/license/validate', {
+      token: session.token,
+    })
+    if (!result.success) {
+      clearLicenseSession()
+      return { success: false, activated: false, error: result.error }
+    }
+    return {
+      success: true,
+      activated: true,
+      username: result.username || session.username,
+      expiresAt: result.expiresAt || session.expiresAt,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      activated: false,
+      error: error.message || 'Could not reach the license server.',
+    }
+  }
+}
 
 function getChromePath() {
   const candidates =
@@ -1868,6 +1951,52 @@ ipcMain.handle('disconnect-gmail', async (_event, accountId) => {
       error: error.message || 'Could not disconnect the Gmail account.',
     }
   }
+})
+
+ipcMain.handle('validate-license', async () => {
+  return validateStoredLicense()
+})
+
+ipcMain.handle('activate-license', async (_event, payload = {}) => {
+  try {
+    const deviceIdFile = path.join(app.getPath('userData'), 'device-id')
+    let deviceId
+    try {
+      deviceId = fs.readFileSync(deviceIdFile, 'utf8').trim()
+    } catch {
+      deviceId = crypto.randomUUID()
+      fs.writeFileSync(deviceIdFile, deviceId, 'utf8')
+    }
+
+    const result = await requestLicenseServer('/api/license/activate', {
+      username: String(payload.username || '').trim(),
+      licenseKey: String(payload.licenseKey || '').trim(),
+      deviceId,
+    })
+    if (!result.success || !result.token) return result
+
+    writeLicenseSession({
+      token: result.token,
+      username: result.username,
+      expiresAt: result.expiresAt,
+    })
+    return {
+      success: true,
+      activated: true,
+      username: result.username,
+      expiresAt: result.expiresAt,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || 'Could not activate this license.',
+    }
+  }
+})
+
+ipcMain.handle('deactivate-license', async () => {
+  clearLicenseSession()
+  return { success: true }
 })
 
 ipcMain.handle('start-profile', async (_event, port) => {

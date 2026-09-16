@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mail System Admin</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #111214;
+        --panel: #1c1d20;
+        --panel-strong: #242528;
+        --border: #35373c;
+        --text: #f5f5f5;
+        --muted: #9699a2;
+        --blue: #4d8df7;
+        --blue-dark: #2f6fdb;
+        --green: #53d58c;
+        --red: #ff6969;
+        --yellow: #f4c563;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-width: 320px;
+        background:
+          radial-gradient(circle at 80% -10%, rgba(77, 141, 247, .18), transparent 35rem),
+          var(--bg);
+        color: var(--text);
+        font: 14px/1.5 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      button, input { font: inherit; }
+      button { cursor: pointer; }
+      .hidden { display: none !important; }
+      .shell { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 42px 0 56px; }
+      .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 38px; }
+      .brand-mark {
+        width: 40px; height: 40px; display: grid; place-items: center;
+        border-radius: 12px; background: #f5f5f5; color: #15161a; font-weight: 800;
+      }
+      .brand strong { display: block; font-size: 16px; }
+      .brand span { color: var(--muted); font-size: 12px; }
+      h1, h2, h3, p { margin: 0; }
+      h1 { font-size: clamp(28px, 4vw, 40px); letter-spacing: -.8px; }
+      h2 { font-size: 18px; }
+      .page-head { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 26px; }
+      .page-head p { color: var(--muted); margin-top: 8px; }
+      .panel {
+        border: 1px solid var(--border); border-radius: 16px; background: rgba(28, 29, 32, .88);
+        box-shadow: 0 18px 70px rgba(0, 0, 0, .18);
+      }
+      .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 18px; }
+      .stat { padding: 18px 20px; }
+      .stat span { color: var(--muted); font-size: 12px; }
+      .stat strong { display: block; font-size: 28px; margin-top: 4px; }
+      .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 20px; border-bottom: 1px solid var(--border); }
+      .toolbar p { color: var(--muted); font-size: 12px; margin-top: 4px; }
+      .toolbar-actions { display: flex; gap: 10px; }
+      .primary, .secondary, .danger, .text-button {
+        border-radius: 9px; padding: 10px 14px; border: 1px solid transparent; color: var(--text);
+      }
+      .primary { background: var(--blue); border-color: var(--blue); font-weight: 700; }
+      .primary:hover { background: #66a0ff; }
+      .secondary { background: var(--panel-strong); border-color: var(--border); }
+      .danger { background: rgba(255, 105, 105, .11); color: #ff8c8c; border-color: rgba(255, 105, 105, .28); }
+      .text-button { background: transparent; color: var(--blue); padding: 6px 0; }
+      .table-wrap { overflow-x: auto; }
+      table { width: 100%; border-collapse: collapse; min-width: 760px; }
+      th, td { text-align: left; padding: 16px 20px; border-bottom: 1px solid rgba(53, 55, 60, .7); white-space: nowrap; }
+      th { color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+      tr:last-child td { border-bottom: 0; }
+      td small { color: var(--muted); display: block; margin-top: 2px; }
+      .status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+      .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+      .status.revoked::before { background: var(--red); }
+      .status.expired::before { background: var(--yellow); }
+      .row-actions { display: flex; align-items: center; gap: 12px; }
+      .row-actions button { font-size: 12px; }
+      .empty { padding: 48px 20px; text-align: center; color: var(--muted); }
+      .modal-backdrop {
+        position: fixed; inset: 0; display: grid; place-items: center; padding: 20px;
+        background: rgba(0, 0, 0, .7); z-index: 10;
+      }
+      .modal { width: min(430px, 100%); padding: 26px; }
+      .modal h2 { margin-bottom: 7px; }
+      .modal p { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+      label { display: block; color: #cfd1d6; font-size: 12px; margin: 14px 0 7px; }
+      input {
+        width: 100%; color: var(--text); background: #151619; border: 1px solid var(--border);
+        border-radius: 9px; padding: 12px 13px; outline: none;
+      }
+      input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(77, 141, 247, .15); }
+      .modal-actions { display: flex; justify-content: end; gap: 10px; margin-top: 22px; }
+      .error { color: #ff8b8b; font-size: 12px; margin-top: 12px; }
+      .success {
+        margin-top: 18px; padding: 15px; border: 1px solid rgba(83, 213, 140, .4);
+        background: rgba(83, 213, 140, .1); border-radius: 10px;
+      }
+      .success strong { display: block; margin-bottom: 5px; }
+      .success code { color: #a8efc3; word-break: break-all; }
+      .notice { margin-top: 12px; color: var(--muted); font-size: 12px; }
+      @media (max-width: 700px) {
+        .shell { width: min(100% - 28px, 1180px); padding-top: 26px; }
+        .page-head { align-items: start; flex-direction: column; }
+        .stats { grid-template-columns: 1fr; }
+        .toolbar { align-items: start; flex-direction: column; }
+        .toolbar-actions { width: 100%; }
+        .toolbar-actions button { flex: 1; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="loginView" class="modal-backdrop">
+      <form id="loginForm" class="modal panel">
+        <h2>Admin sign in</h2>
+        <p>Manage Mail System users and their license access.</p>
+        <label for="adminUsername">Username</label>
+        <input id="adminUsername" autocomplete="username" placeholder="Admin username" required />
+        <label for="adminPassword">Password</label>
+        <input id="adminPassword" type="password" autocomplete="current-password" placeholder="Admin password" required />
+        <div id="loginError" class="error hidden"></div>
+        <div class="modal-actions">
+          <button class="primary" type="submit">Sign in</button>
+        </div>
+      </form>
+    </div>
+
+    <main id="appView" class="shell hidden">
+      <div class="brand">
+        <div class="brand-mark">M</div>
+        <div><strong>Mail System</strong><span>License administration</span></div>
+      </div>
+      <div class="page-head">
+        <div><h1>Users & licenses</h1><p>Create access keys, extend time, or revoke a user immediately.</p></div>
+        <button id="logoutButton" class="secondary" type="button">Sign out</button>
+      </div>
+      <section class="stats">
+        <div class="panel stat"><span>Total users</span><strong id="totalUsers">0</strong></div>
+        <div class="panel stat"><span>Active licenses</span><strong id="activeUsers">0</strong></div>
+        <div class="panel stat"><span>Expiring / expired</span><strong id="expiringUsers">0</strong></div>
+      </section>
+      <section class="panel">
+        <div class="toolbar">
+          <div><h2>License users</h2><p>New license keys start their duration on first activation.</p></div>
+          <div class="toolbar-actions"><button id="refreshButton" class="secondary" type="button">Refresh</button><button id="createButton" class="primary" type="button">+ Create user</button></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>User</th><th>License</th><th>Status</th><th>Expires</th><th>Usage</th><th>Actions</th></tr></thead>
+            <tbody id="licenseRows"></tbody>
+          </table>
+          <div id="emptyState" class="empty hidden">No license users yet. Create the first one.</div>
+        </div>
+      </section>
+      <p class="notice">License keys are shown only once when created. Save the key before closing the success message.</p>
+    </main>
+
+    <div id="createModal" class="modal-backdrop hidden">
+      <form id="createForm" class="modal panel">
+        <h2>Create license user</h2>
+        <p>The key will be generated once and will be visible only after this form is submitted.</p>
+        <label for="newUsername">Username</label>
+        <input id="newUsername" placeholder="e.g. customer01" pattern="[a-zA-Z0-9._-]{3,64}" required />
+        <label for="newDuration">Duration (hours)</label>
+        <input id="newDuration" type="number" min="1" max="8760" value="24" required />
+        <div id="createError" class="error hidden"></div>
+        <div id="createdKey" class="success hidden"></div>
+        <div class="modal-actions">
+          <button id="cancelCreate" class="secondary" type="button">Close</button>
+          <button id="submitCreate" class="primary" type="submit">Create key</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="extendModal" class="modal-backdrop hidden">
+      <form id="extendForm" class="modal panel">
+        <h2>Extend license</h2>
+        <p id="extendDescription">Add more time to this user's current expiration.</p>
+        <label for="extendDuration">Add duration (hours)</label>
+        <input id="extendDuration" type="number" min="1" max="8760" value="24" required />
+        <div id="extendError" class="error hidden"></div>
+        <div class="modal-actions">
+          <button id="cancelExtend" class="secondary" type="button">Cancel</button>
+          <button class="primary" type="submit">Extend access</button>
+        </div>
+      </form>
+    </div>
+
+    <script>
+      const loginView = document.getElementById('loginView')
+      const appView = document.getElementById('appView')
+      const loginError = document.getElementById('loginError')
+      const createModal = document.getElementById('createModal')
+      const extendModal = document.getElementById('extendModal')
+      let selectedLicenseId = null
+      let licenses = []
+
+      const showError = (element, message) => {
+        element.textContent = message
+        element.classList.toggle('hidden', !message)
+      }
+
+      const api = async (url, options = {}) => {
+        const response = await fetch(url, {
+          ...options,
+          headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+          credentials: 'same-origin',
+        })
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(data.error || 'Request failed.')
+        return data
+      }
+
+      const formatDate = (value) => value ? new Date(value).toLocaleString() : 'Not activated'
+      const isExpired = (license) => license.expiresAt && new Date(license.expiresAt).getTime() <= Date.now()
+
+      function renderLicenses() {
+        document.getElementById('totalUsers').textContent = licenses.length
+        document.getElementById('activeUsers').textContent = licenses.filter((item) => item.status === 'active' && !isExpired(item)).length
+        document.getElementById('expiringUsers').textContent = licenses.filter((item) => item.status === 'revoked' || isExpired(item)).length
+        const rows = document.getElementById('licenseRows')
+        document.getElementById('emptyState').classList.toggle('hidden', licenses.length > 0)
+        rows.innerHTML = licenses.map((license) => {
+          const expired = isExpired(license)
+          const state = license.status === 'revoked' ? 'revoked' : expired ? 'expired' : 'active'
+          return `<tr>
+            <td><strong>${escapeHtml(license.username)}</strong><small>Created ${escapeHtml(formatDate(license.createdAt))}</small></td>
+            <td><code>••••-${escapeHtml(license.licenseKeyLast4)}</code><small>${license.durationHours}h duration</small></td>
+            <td><span class="status ${state}">${state}</span></td>
+            <td>${escapeHtml(formatDate(license.expiresAt))}</td>
+            <td>${license.activationCount} activation${license.activationCount === 1 ? '' : 's'}<small>${license.lastSeenAt ? 'Last seen ' + escapeHtml(formatDate(license.lastSeenAt)) : 'Never used'}</small></td>
+            <td><div class="row-actions">
+              <button class="text-button" type="button" onclick="openExtend(${license.id}, '${escapeHtml(license.username)}')">Extend</button>
+              ${license.status === 'active' ? `<button class="text-button" type="button" onclick="revokeLicense(${license.id})">Revoke</button>` : ''}
+              <button class="text-button" style="color:#ff8c8c" type="button" onclick="deleteLicense(${license.id})">Delete</button>
+            </div></td>
+          </tr>`
+        }).join('')
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[character]))
+      }
+
+      async function loadLicenses() {
+        const data = await api('/api/admin/licenses')
+        licenses = data.licenses || []
+        renderLicenses()
+      }
+
+      async function showApp() {
+        loginView.classList.add('hidden')
+        appView.classList.remove('hidden')
+        await loadLicenses()
+      }
+
+      document.getElementById('loginForm').addEventListener('submit', async (event) => {
+        event.preventDefault()
+        showError(loginError, '')
+        try {
+          await api('/api/admin/login', { method: 'POST', body: JSON.stringify({ username: document.getElementById('adminUsername').value, password: document.getElementById('adminPassword').value }) })
+          await showApp()
+        } catch (error) { showError(loginError, error.message) }
+      })
+
+      document.getElementById('logoutButton').addEventListener('click', async () => {
+        await api('/api/admin/logout', { method: 'POST' })
+        appView.classList.add('hidden')
+        loginView.classList.remove('hidden')
+      })
+      document.getElementById('refreshButton').addEventListener('click', () => loadLicenses().catch((error) => alert(error.message)))
+      document.getElementById('createButton').addEventListener('click', () => {
+        document.getElementById('createError').classList.add('hidden')
+        document.getElementById('createdKey').classList.add('hidden')
+        document.getElementById('submitCreate').classList.remove('hidden')
+        document.getElementById('newUsername').value = ''
+        document.getElementById('newDuration').value = 24
+        createModal.classList.remove('hidden')
+      })
+      document.getElementById('cancelCreate').addEventListener('click', () => createModal.classList.add('hidden'))
+      document.getElementById('createForm').addEventListener('submit', async (event) => {
+        event.preventDefault()
+        const errorElement = document.getElementById('createError')
+        showError(errorElement, '')
+        try {
+          const data = await api('/api/admin/licenses', { method: 'POST', body: JSON.stringify({ username: document.getElementById('newUsername').value, durationHours: Number(document.getElementById('newDuration').value) }) })
+          document.getElementById('createdKey').innerHTML = `<strong>Save this license key now</strong><code>${escapeHtml(data.license.licenseKey)}</code>`
+          document.getElementById('createdKey').classList.remove('hidden')
+          document.getElementById('submitCreate').classList.add('hidden')
+          await loadLicenses()
+        } catch (error) { showError(errorElement, error.message) }
+      })
+      document.getElementById('cancelExtend').addEventListener('click', () => extendModal.classList.add('hidden'))
+      document.getElementById('extendForm').addEventListener('submit', async (event) => {
+        event.preventDefault()
+        const errorElement = document.getElementById('extendError')
+        showError(errorElement, '')
+        try {
+          await api(`/api/admin/licenses/${selectedLicenseId}/extend`, { method: 'POST', body: JSON.stringify({ durationHours: Number(document.getElementById('extendDuration').value) }) })
+          extendModal.classList.add('hidden')
+          await loadLicenses()
+        } catch (error) { showError(errorElement, error.message) }
+      })
+
+      window.openExtend = (id, username) => {
+        selectedLicenseId = id
+        document.getElementById('extendDescription').textContent = `Add more time to ${username}'s current expiration.`
+        document.getElementById('extendDuration').value = 24
+        document.getElementById('extendError').classList.add('hidden')
+        extendModal.classList.remove('hidden')
+      }
+      window.revokeLicense = async (id) => {
+        if (!confirm('Revoke this license? The desktop app will stop accepting it on its next validation.')) return
+        try { await api(`/api/admin/licenses/${id}/revoke`, { method: 'POST' }); await loadLicenses() } catch (error) { alert(error.message) }
+      }
+      window.deleteLicense = async (id) => {
+        if (!confirm('Delete this user and license permanently?')) return
+        try { await api(`/api/admin/licenses/${id}/delete`, { method: 'POST' }); await loadLicenses() } catch (error) { alert(error.message) }
+      }
+
+      api('/api/admin/session').then(showApp).catch(() => loginView.classList.remove('hidden'))
+    </script>
+  </body>
+</html>
