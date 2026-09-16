@@ -2316,6 +2316,19 @@ nav {
   background: #050505;
 }
 
+.sending-mode .header {
+  display: none;
+}
+
+.sending-mode .main {
+  min-height: 100vh;
+  background: #050505;
+}
+
+.sending-menu-label {
+  margin-top: 22px;
+}
+
 .compact-campaign-shell {
   width: 100%;
   max-width: none;
@@ -2819,6 +2832,26 @@ nav {
 .compact-status-dot.failed {
   background: #ef6666;
   box-shadow: 0 0 0 3px rgba(239, 102, 102, 0.12);
+}
+
+.compact-status-dot.api {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.13);
+}
+
+.compact-api-connection-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.1);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 .compact-profile-select {
