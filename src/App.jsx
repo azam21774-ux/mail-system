@@ -1335,7 +1335,7 @@ function App() {
   }
 
   const campaignComposer = (
-    <div className="content">
+    <div className="content compact-campaign-shell">
       <section className="page-title-row">
         <div>
           <span className="eyebrow">CAMPAIGN BUILDER</span>
@@ -1878,7 +1878,13 @@ function App() {
   )
 
   return (
-    <div className="app">
+    <div
+      className={`app ${
+        active === 'Campaigns' && showCreateCampaign
+          ? 'compact-campaign-mode'
+          : ''
+      }`}
+    >
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-icon">
