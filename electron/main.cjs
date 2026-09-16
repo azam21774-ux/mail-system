@@ -825,6 +825,7 @@ async function connectToGmail(port) {
     '[gh="cm"], [aria-label="Compose"], [role="button"][aria-label="Compose"]',
     { visible: true, timeout: 30000 }
   )
+  await dismissGmailNotificationSnackbar(page)
 
   return { browser, page }
 }
@@ -929,6 +930,79 @@ async function waitForAttachmentUpload(page) {
     },
     { timeout: 30000 }
   )
+}
+
+async function dismissGmailNotificationSnackbar(page, timeout = 3000) {
+  const deadline = Date.now() + timeout
+
+  while (Date.now() < deadline) {
+    const dismissed = await page
+      .evaluate(() => {
+        const normalize = (value) =>
+          String(value || '')
+            .replace(/\s+/g, ' ')
+            .trim()
+        const visible = (element) => {
+          const style = window.getComputedStyle(element)
+          const rect = element.getBoundingClientRect()
+          return (
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            rect.width > 0 &&
+            rect.height > 0
+          )
+        }
+        const notificationText =
+          /enable desktop notifications\s+for\s+gmail/i
+
+        const getNotificationScope = (element) => {
+          let current = element
+          for (let depth = 0; current && depth < 8; depth += 1) {
+            const text = normalize(current.innerText || current.textContent)
+            if (notificationText.test(text)) return current
+            current = current.parentElement
+          }
+          return null
+        }
+
+        const controls = Array.from(
+          document.querySelectorAll(
+            'button, [role="button"], [aria-label], [data-tooltip], [title]'
+          )
+        )
+
+        const dismissControl = controls.find((element) => {
+          if (!visible(element)) return false
+
+          const scope = getNotificationScope(element)
+          if (!scope) return false
+
+          const text = normalize(element.innerText || element.textContent)
+          const label = normalize(
+            element.getAttribute('aria-label') ||
+              element.getAttribute('data-tooltip') ||
+              element.getAttribute('title')
+          )
+
+          return (
+            /^no,?\s*thanks$/i.test(text) ||
+            /^no,?\s*thanks$/i.test(label) ||
+            /^close$/i.test(label) ||
+            /\bclose\b/i.test(label)
+          )
+        })
+
+        if (!dismissControl) return false
+        dismissControl.click()
+        return true
+      })
+      .catch(() => false)
+
+    if (dismissed) return true
+    await wait(150)
+  }
+
+  return false
 }
 
 async function clickGmailSend(page, timeout = 10000) {
@@ -1255,6 +1329,9 @@ async function sendOneEmail(
     await messageBody.type(body, { delay: typingDelay })
   }
 
+  // Gmail can show a desktop-notification snackbar across the compose
+  // toolbar. Dismiss it immediately before locating and clicking Send.
+  await dismissGmailNotificationSnackbar(page)
   const clickedSendButton = await clickGmailSend(page)
 
   if (!clickedSendButton) {
