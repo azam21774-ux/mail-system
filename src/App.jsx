@@ -1499,10 +1499,21 @@ function App() {
         </div>
 
         <div className="compact-control-cell">
-          <div className="compact-csv-name">
+          <label className="compact-csv-name compact-recipient-upload">
             <Upload size={13} />
             <span>{csvFile?.name || 'No recipients.csv'}</span>
-          </div>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onClick={(event) => {
+                event.currentTarget.value = ''
+              }}
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) parseCSV(file)
+              }}
+            />
+          </label>
           <small>{recipientCount} recipients</small>
           {csvFile && (
             <button
@@ -1569,10 +1580,21 @@ function App() {
           </div>
 
           <div className="compact-control-cell">
-            <button type="button" className="compact-load-recipients">
+            <label className="compact-load-recipients">
               <Upload size={13} />
               Load recipients
-            </button>
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onClick={(event) => {
+                  event.currentTarget.value = ''
+                }}
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (file) parseCSV(file)
+                }}
+              />
+            </label>
             <small>Waiting for Gmail account</small>
             <button type="button" className="compact-send-button" disabled>
               <Play size={14} />
