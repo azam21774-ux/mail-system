@@ -459,6 +459,21 @@ function looksLikeHtml(value) {
   return /<\s*\/?\s*[a-z][^>]*>/i.test(String(value || ''))
 }
 
+function getNextChromeDebugPort(profileList) {
+  const usedPorts = new Set(
+    profileList
+      .map((profile) => Number(profile.debugPort))
+      .filter((port) => Number.isInteger(port) && port > 0)
+  )
+  let port = 9222
+
+  while (usedPorts.has(port)) {
+    port += 1
+  }
+
+  return port
+}
+
 function getProfileCampaigns(campaigns, profileId) {
   return campaigns.filter((campaign) => {
     const assignedProfileIds = campaign.profileIds?.length
@@ -800,7 +815,7 @@ function App() {
         status: 'offline',
         lastActive: 'Never',
         running: false,
-        debugPort: 9222 + prev.length,
+        debugPort: getNextChromeDebugPort(prev),
       },
     ])
 
@@ -829,19 +844,22 @@ function App() {
 
     if (!confirmed) return
 
-    const remainingProfiles = profiles.filter((item) => item.id !== profile.id)
+    setProfiles((prev) => {
+      const remainingProfiles = prev.filter((item) => item.id !== profile.id)
 
-    setProfiles((prev) => prev.filter((item) => item.id !== profile.id))
+      setSelectedProfileIds((current) => {
+        const nextSelectedIds = current.filter(
+          (profileId) => Number(profileId) !== profile.id
+        )
+        if (nextSelectedIds.length) return nextSelectedIds
+        return remainingProfiles[0] ? [String(remainingProfiles[0].id)] : []
+      })
+
+      return remainingProfiles
+    })
     setSenderRows((prev) =>
       prev.filter((row) => row.profileId !== profile.id)
     )
-    setSelectedProfileIds((prev) => {
-      const nextSelectedIds = prev.filter(
-        (profileId) => Number(profileId) !== profile.id
-      )
-      if (nextSelectedIds.length) return nextSelectedIds
-      return remainingProfiles[0] ? [String(remainingProfiles[0].id)] : []
-    })
     setCampaigns((prev) =>
       prev.map((campaign) => {
         const profileIds = (
@@ -1465,7 +1483,7 @@ function App() {
       status: 'offline',
       lastActive: 'Never',
       running: false,
-      debugPort: 9222 + profiles.length,
+      debugPort: getNextChromeDebugPort(profiles),
     }
 
     setProfiles((previous) => [...previous, newProfile])
