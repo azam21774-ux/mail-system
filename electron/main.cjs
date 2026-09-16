@@ -2051,6 +2051,7 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
           fs.unlinkSync(recipientAttachmentPath)
         }
       }
+
       if (payload.delaySeconds > 0 && processed < recipients.length) {
         await wait(Number(payload.delaySeconds) * 1000)
       }

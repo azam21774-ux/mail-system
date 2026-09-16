@@ -2646,10 +2646,7 @@ function App() {
             <div className="form-card-header">
               <div>
                 <h3>Sending Delay</h3>
-                <p>
-                  API sends stay sequential. At 0s the next send starts
-                  immediately; at 1s it waits one second.
-                </p>
+                <p>Wait between each recipient to control the send pace.</p>
               </div>
               <div className="delay-value">
                 <Clock3 size={15} />
