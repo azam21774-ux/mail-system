@@ -1,4 +1,4 @@
-name: Build Windows installer
+name: Build macOS installer
 
 on:
   workflow_dispatch:
@@ -7,8 +7,8 @@ on:
       - main
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build-mac:
+    runs-on: macos-latest
 
     steps:
       - name: Checkout repository
@@ -23,12 +23,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Windows installer
-        run: npm run package:win
+      - name: Build macOS installer
+        run: npm run package:mac
 
-      - name: Upload Windows installer
+      - name: Upload macOS installer
         uses: actions/upload-artifact@v4
         with:
-          name: mail-system-windows-installer
-          path: release/*.exe
+          name: mail-system-macos-installer
+          path: release/*.dmg
           if-no-files-found: error

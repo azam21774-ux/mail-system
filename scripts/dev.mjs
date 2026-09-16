@@ -4,8 +4,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 const binDirectory = join(process.cwd(), 'node_modules', '.bin')
-const bin = (name) =>
-  join(binDirectory, process.platform === 'win32' ? `${name}.cmd` : name)
+const bin = (name) => join(binDirectory, name)
 
 const vitePath = bin('vite')
 const electronPath = bin('electron')

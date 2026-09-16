@@ -9,8 +9,8 @@
     "dev": "node scripts/dev.mjs",
     "build": "vite build",
     "start": "electron .",
-    "package:win": "npm run build && electron-builder --win nsis --publish never",
-    "package:win:portable": "npm run build && electron-builder --win portable --publish never"
+    "package:mac": "npm run build && electron-builder --mac dmg --publish never",
+    "package:mac:dir": "npm run build && electron-builder --mac dir --publish never"
   },
   "dependencies": {
     "docx": "^9.7.1",
@@ -44,23 +44,18 @@
       "package.json"
     ],
     "asar": true,
-    "win": {
+    "mac": {
       "target": [
         {
-          "target": "nsis",
+          "target": "dmg",
           "arch": [
-            "x64"
+            "x64",
+            "arm64"
           ]
         }
       ],
-      "artifactName": "Mail-System-Setup-${version}.${ext}"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "Mail System"
+      "artifactName": "Mail-System-${version}-${arch}.${ext}",
+      "category": "public.app-category.productivity"
     }
   }
 }

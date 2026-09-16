@@ -14,39 +14,8 @@ const campaignJobs = new Map()
 let mainWindow
 
 function getChromePath() {
-  const candidates =
-    process.platform === 'darwin'
-      ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
-      : process.platform === 'win32'
-        ? [
-            process.env.LOCALAPPDATA &&
-              path.join(
-                process.env.LOCALAPPDATA,
-                'Google',
-                'Chrome',
-                'Application',
-                'chrome.exe'
-              ),
-            process.env.PROGRAMFILES &&
-              path.join(
-                process.env.PROGRAMFILES,
-                'Google',
-                'Chrome',
-                'Application',
-                'chrome.exe'
-              ),
-            process.env['PROGRAMFILES(X86)'] &&
-              path.join(
-                process.env['PROGRAMFILES(X86)'],
-                'Google',
-                'Chrome',
-                'Application',
-                'chrome.exe'
-              ),
-          ]
-        : ['/usr/bin/google-chrome', '/usr/bin/chromium']
-
-  return candidates.filter(Boolean).find((candidate) => fs.existsSync(candidate))
+  const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  return fs.existsSync(chromePath) ? chromePath : null
 }
 
 function runCommand(command, args) {
@@ -226,30 +195,6 @@ function cropScreenshotToHtmlBounds(screenshot, dimensions, renderScale) {
   }
 }
 
-async function captureNativeHtmlScreenshot(
-  webContents,
-  { width, height, type }
-) {
-  const image = await webContents.capturePage(
-    {
-      x: 0,
-      y: 0,
-      width: Math.max(Math.ceil(Number(width) || 1), 1),
-      height: Math.max(Math.ceil(Number(height) || 1), 1),
-    },
-    {
-      stayHidden: true,
-    }
-  )
-  const size = image.getSize()
-
-  return {
-    data: type === 'jpeg' ? image.toJPEG(98) : image.toPNG(),
-    width: size.width,
-    height: size.height,
-  }
-}
-
 async function captureHtmlScreenshot(
   webContents,
   { width, height, renderScale, type }
@@ -287,18 +232,7 @@ async function captureHtmlScreenshot(
       height: Math.max(Math.ceil(Number(height) || 1), 1) * renderScale,
     }
   } catch (error) {
-    if (process.platform !== 'win32') throw error
-
-    if (attachedHere && debuggerSession.isAttached()) {
-      debuggerSession.detach()
-      attachedHere = false
-    }
-
-    return captureNativeHtmlScreenshot(webContents, {
-      width,
-      height,
-      type,
-    })
+    throw error
   } finally {
     if (attachedHere && debuggerSession.isAttached()) {
       debuggerSession.detach()
@@ -314,9 +248,7 @@ async function renderHtmlAsset({
   trimToContent = true,
 }) {
   const renderWindow = new BrowserWindow({
-    show: process.platform === 'win32',
-    x: process.platform === 'win32' ? -3000 : undefined,
-    y: process.platform === 'win32' ? -3000 : undefined,
+    show: false,
     width: 1200,
     height: 900,
     backgroundColor: '#ffffff',
@@ -521,9 +453,7 @@ async function renderHtmlAsset({
       renderWindow.webContents.setZoomFactor(1)
       renderWindow.setContentSize(
         displayWidth,
-        process.platform === 'win32'
-          ? Math.max(Math.min(displayHeight, 12000), 1)
-          : Math.max(Math.min(displayHeight, 900), 1)
+        Math.max(Math.min(displayHeight, 900), 1)
       )
       await wait(100)
 
@@ -543,10 +473,6 @@ async function renderHtmlAsset({
         Math.max(Math.ceil(Number(finalContentHeight) || 0), displayHeight),
         12000
       )
-      if (process.platform === 'win32') {
-        renderWindow.setContentSize(displayWidth, finalDisplayHeight)
-        await wait(150)
-      }
       const outputScreenshot = await withTimeout(
         captureHtmlScreenshot(renderWindow.webContents, {
           width: displayWidth,
