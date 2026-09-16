@@ -2282,7 +2282,17 @@ function App() {
                   : rowStatus}
               </span>
             </div>
-            {!isApiSending && (
+            {isApiSending ? (
+              <button
+                type="button"
+                className="compact-delete-profile compact-row-delete"
+                onClick={() => deleteSenderRow(row)}
+                aria-label={`Delete Gmail API row ${row.rowNumber}`}
+                title="Delete API sender row"
+              >
+                <Trash2 size={13} />
+              </button>
+            ) : (
               <button
                 type="button"
                 className="compact-delete-profile compact-row-delete"
@@ -2297,6 +2307,96 @@ function App() {
               >
                 <Trash2 size={13} />
               </button>
+            )}
+            {isApiSending && (
+              <div className="compact-api-account-actions compact-row-api-actions">
+                <input
+                  className="compact-gmail-client-id-input"
+                  value={row.gmailOAuthClientId || ''}
+                  onChange={(event) => {
+                    setSenderRowField(
+                      row.id,
+                      'gmailOAuthClientId',
+                      event.target.value
+                    )
+                    setSenderRowField(row.id, 'gmailConnectionError', '')
+                  }}
+                  placeholder="Google OAuth Client ID"
+                  aria-label={`Google OAuth Client ID for row ${row.rowNumber}`}
+                  spellCheck="false"
+                />
+                <input
+                  className="compact-gmail-client-id-input"
+                  type="password"
+                  value={row.gmailOAuthClientSecret || ''}
+                  onChange={(event) => {
+                    setSenderRowField(
+                      row.id,
+                      'gmailOAuthClientSecret',
+                      event.target.value
+                    )
+                    setSenderRowField(row.id, 'gmailConnectionError', '')
+                  }}
+                  placeholder="Client Secret (optional)"
+                  aria-label={`Google OAuth Client Secret for row ${row.rowNumber}`}
+                  autoComplete="off"
+                  spellCheck="false"
+                />
+                <div className="compact-api-account-row">
+                  {gmailAccounts.length > 0 && (
+                    <select
+                      className="compact-gmail-account-select"
+                      value={row.gmailAccountId || ''}
+                      onChange={(event) => {
+                        const account = gmailAccounts.find(
+                          (item) => item.id === event.target.value
+                        )
+                        setSenderRowField(
+                          row.id,
+                          'gmailAccountId',
+                          account?.id || null
+                        )
+                        setSenderRowField(
+                          row.id,
+                          'profileName',
+                          account?.email || 'Connect Gmail account'
+                        )
+                        setSenderRowField(
+                          row.id,
+                          'status',
+                          account ? 'ready' : 'waiting'
+                        )
+                      }}
+                      aria-label={`Gmail API account for row ${row.rowNumber}`}
+                    >
+                      <option value="">Choose connected account</option>
+                      {gmailAccounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.email}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <button
+                    type="button"
+                    className="compact-api-connection-badge"
+                    onClick={() => connectGmailForRow(row)}
+                    disabled={row.gmailConnecting}
+                    title="Connect a Gmail account for this row"
+                  >
+                    {row.gmailConnecting
+                      ? 'Opening…'
+                      : row.gmailAccountId
+                        ? '+ Gmail'
+                        : 'Connect Gmail'}
+                  </button>
+                </div>
+                {row.gmailConnectionError && (
+                  <span className="compact-gmail-connection-error">
+                    {row.gmailConnectionError}
+                  </span>
+                )}
+              </div>
             )}
           </div>
 
@@ -2359,7 +2459,7 @@ function App() {
               className="compact-send-button"
               onClick={() =>
                  isApiSending
-                   ? selectedGmailAccountId
+                   ? row.gmailAccountId
                      ? rowCampaign?.status === 'Running'
                        ? stopCampaign(rowCampaign)
                        : sendSenderRow(row)
