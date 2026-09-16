@@ -665,6 +665,44 @@ async function createXlsxImageBuffer(image) {
   return workbook.xlsx.writeBuffer()
 }
 
+async function createPptxImageBuffer(image) {
+  const imageWidth = Math.max(
+    Number(image.displayWidth || image.width) || 1200,
+    1
+  )
+  const imageHeight = Math.max(
+    Number(image.displayHeight || image.height) || 900,
+    1
+  )
+  const slideWidth = 13.333
+  const slideHeight = Math.max(
+    2,
+    Math.min((slideWidth * imageHeight) / imageWidth, 20)
+  )
+  const presentation = new PptxGenJS()
+
+  presentation.defineLayout({
+    name: 'HTML_CONTENT',
+    width: slideWidth,
+    height: slideHeight,
+  })
+  presentation.layout = 'HTML_CONTENT'
+
+  const slide = presentation.addSlide()
+  slide.background = { color: 'FFFFFF' }
+  slide.addImage({
+    data: `data:image/png;base64,${Buffer.from(image.data).toString(
+      'base64'
+    )}`,
+    x: 0,
+    y: 0,
+    w: slideWidth,
+    h: slideHeight,
+  })
+
+  return presentation.write({ outputType: 'nodebuffer' })
+}
+
 async function convertPngBufferToHeic(pngData, directory) {
   if (process.platform !== 'darwin') {
     throw new Error('HEIC generation requires the macOS Electron app.')
@@ -766,23 +804,7 @@ async function createTemplatedAttachment(
   } else if (format === 'PPTX') {
     const rendered = await renderHtmlAsset({ html, type: 'png' })
     if (!rendered.success) throw new Error(rendered.error)
-    const presentation = new PptxGenJS()
-    const slide = presentation.addSlide()
-    const width = Math.min(Number(rendered.width) || 1200, 1200)
-    const height =
-      (Number(rendered.height) || 900) *
-      (width / (Number(rendered.width) || 1200))
-    slide.background = { color: 'FFFFFF' }
-    slide.addImage({
-      data: `data:image/png;base64,${Buffer.from(rendered.data).toString(
-        'base64'
-      )}`,
-      x: 0,
-      y: 0,
-      w: 13.333,
-      h: Math.min(height / width * 13.333, 7.5),
-    })
-    data = await presentation.write({ outputType: 'nodebuffer' })
+    data = await createPptxImageBuffer(rendered)
   } else {
     throw new Error(`Unsupported attachment format: ${format}`)
   }

@@ -120,6 +120,17 @@ function blobToFile(blob, fileName) {
   })
 }
 
+async function blobToDataUrl(blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  let binary = ''
+
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
+  }
+
+  return `data:${blob.type || 'image/png'};base64,${btoa(binary)}`
+}
+
 async function renderHtmlWithElectron(html, type, options = {}) {
   if (!window.electronAPI?.renderHtmlAsset) return null
 
@@ -315,21 +326,43 @@ async function createAttachmentFromHtml(html, format, requestedName) {
   }
 
   if (format === 'PPTX') {
+    const renderedImage = await renderHtmlWithElectron(html, 'png', {
+      trimToContent: true,
+    })
+    if (!renderedImage) {
+      throw new Error(
+        'PPTX image attachments must be generated from the Electron app.'
+      )
+    }
+
+    const imageWidth = Math.max(
+      Number(renderedImage.displayWidth || renderedImage.width) || 1200,
+      1
+    )
+    const imageHeight = Math.max(
+      Number(renderedImage.displayHeight || renderedImage.height) || 900,
+      1
+    )
+    const slideWidth = 13.333
+    const slideHeight = Math.max(
+      2,
+      Math.min((slideWidth * imageHeight) / imageWidth, 20)
+    )
     const presentation = new PptxGenJS()
+    presentation.defineLayout({
+      name: 'HTML_CONTENT',
+      width: slideWidth,
+      height: slideHeight,
+    })
+    presentation.layout = 'HTML_CONTENT'
     const slide = presentation.addSlide()
     slide.background = { color: 'FFFFFF' }
-    slide.addText(plainText || 'HTML content', {
-      x: 0.5,
-      y: 0.5,
-      w: 9,
-      h: 6.2,
-      fontFace: 'Arial',
-      fontSize: 18,
-      color: '111111',
-      breakLine: false,
-      margin: 0.1,
-      valign: 'top',
-      fit: 'shrink',
+    slide.addImage({
+      data: await blobToDataUrl(renderedImage.blob),
+      x: 0,
+      y: 0,
+      w: slideWidth,
+      h: slideHeight,
     })
     const data = await presentation.write({ outputType: 'blob' })
     return new File([data], fileName, {
