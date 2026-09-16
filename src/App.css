@@ -3078,20 +3078,20 @@ nav {
   color: #fff;
 }
 
-.compact-pending-row {
-  opacity: 0.92;
+.compact-sender-row {
+  opacity: 1;
 }
 
-.compact-pending-row .compact-message-cell {
-  opacity: 0.68;
+.compact-sender-row .compact-message-cell {
+  opacity: 1;
 }
 
-.compact-pending-row .compact-subject-input,
-.compact-pending-row .compact-body-input {
-  cursor: not-allowed;
+.compact-sender-row .compact-subject-input,
+.compact-sender-row .compact-body-input {
+  cursor: text;
 }
 
-.compact-pending-row .compact-control-cell > small {
+.compact-sender-row .compact-control-cell > small {
   color: #697581;
 }
 

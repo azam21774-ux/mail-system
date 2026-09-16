@@ -1162,10 +1162,13 @@ function App() {
         profileId: nextProfileId,
         profileName: 'Waiting for Gmail account',
         status: 'waiting',
+        subject: '',
+        body: '',
         csvFile: null,
         csvHeaders: [],
         csvRows: [],
         recipientCount: 0,
+        campaignId: null,
       },
     ])
     void openProfile(newProfile)
@@ -1173,6 +1176,14 @@ function App() {
       'profile',
       'New sender row added',
       `${newProfile.name} was opened for Gmail login.`
+    )
+  }
+
+  const setSenderRowField = (rowId, field, value) => {
+    setSenderRows((previous) =>
+      previous.map((row) =>
+        row.id === rowId ? { ...row, [field]: value } : row
+      )
     )
   }
 
@@ -1434,6 +1445,76 @@ function App() {
     void runCampaignOnProfile(campaign, profile)
   }
 
+  const sendSenderRow = async (row) => {
+    if (row.status !== 'ready') {
+      alert('Wait until this Chrome profile is ready in Gmail.')
+      return
+    }
+
+    if (!row.csvRows?.length) {
+      alert('Load a CSV file before sending from this profile.')
+      return
+    }
+
+    const existingCampaign = row.campaignId
+      ? campaigns.find((campaign) => campaign.id === row.campaignId)
+      : null
+    const campaign = {
+      id: existingCampaign?.id || Date.now() + Number(row.profileId || 0),
+      name: `${campaignName.trim() || 'Mail Campaign'} — ${
+        row.profileName || `Chrome Profile ${row.profileId}`
+      }`,
+      subject: row.subject || '',
+      body: row.body || '',
+      htmlMode: looksLikeHtml(row.body || ''),
+      profileIds: [Number(row.profileId)],
+      profileId: Number(row.profileId),
+      profileName: row.profileName,
+      csvFile: row.csvFile,
+      attachment,
+      csvHeaders: row.csvHeaders || [],
+      recipientRows: row.csvRows || [],
+      csvName: row.csvFile?.name || null,
+      attachmentName: attachment?.name || null,
+      attachmentMode,
+      attachmentHtml,
+      attachmentFormat,
+      attachmentFileName,
+      customVariables: {
+        tfn: tfnValue,
+      },
+      recipients: row.recipientCount || row.csvRows.length,
+      delaySeconds: Number(delaySeconds),
+      typingDelayMs: Number(typingDelayMs),
+      sent: existingCampaign?.sent || 0,
+      failed: existingCampaign?.failed || 0,
+      nextRecipientIndex: existingCampaign?.nextRecipientIndex || 0,
+      createdAt: existingCampaign?.createdAt || new Date().toLocaleString(),
+      updatedAt: new Date().toLocaleString(),
+      status: existingCampaign?.status || 'Draft',
+    }
+
+    setCampaigns((previous) =>
+      existingCampaign
+        ? previous.map((item) => (item.id === campaign.id ? campaign : item))
+        : [campaign, ...previous]
+    )
+    setSenderRowField(row.id, 'campaignId', campaign.id)
+
+    const profile = profiles.find((item) => item.id === row.profileId)
+    if (!profile) {
+      alert('This Chrome profile is no longer available.')
+      return
+    }
+
+    if (!profile.running) {
+      const started = await startProfileAutomation(profile)
+      if (!started) return
+    }
+
+    void runCampaignOnProfile(campaign, profile)
+  }
+
   const deleteCampaign = (campaign) => {
     const confirmed = window.confirm(
       `Delete "${campaign.name}"? This action cannot be undone.`
@@ -1679,15 +1760,27 @@ function App() {
         </div>
       </section>
 
-      {senderRows.map((row) => (
-        <section className="compact-send-panel compact-pending-row" key={row.id}>
+      {senderRows.map((row) => {
+        const rowCampaign = row.campaignId
+          ? campaigns.find((campaign) => campaign.id === row.campaignId)
+          : null
+        const rowSent = rowCampaign?.sent || 0
+        const rowFailed = rowCampaign?.failed || 0
+        const rowTotal = rowCampaign?.recipients ?? row.recipientCount ?? 0
+        const rowProgress = rowTotal
+          ? Math.min(((rowSent + rowFailed) / rowTotal) * 100, 100)
+          : 0
+        const rowStatus = rowCampaign?.status || row.status || 'waiting'
+
+        return (
+        <section className="compact-send-panel compact-sender-row" key={row.id}>
           <div className="compact-row-number">{row.rowNumber}</div>
 
           <div className="compact-profile-cell">
             <span className={`compact-status-dot ${row.status || 'waiting'}`} />
             <div>
               <strong>{row.profileName}</strong>
-              <span>{row.status || 'waiting'}</span>
+              <span>{rowStatus}</span>
             </div>
             <button
               type="button"
@@ -1711,25 +1804,32 @@ function App() {
             </span>
             <input
               className="compact-subject-input"
+              value={row.subject || ''}
+              onChange={(event) =>
+                setSenderRowField(row.id, 'subject', event.target.value)
+              }
               placeholder="Subject Line"
-              disabled
             />
             <textarea
               className="compact-body-input"
+              value={row.body || ''}
+              onChange={(event) =>
+                setSenderRowField(row.id, 'body', event.target.value)
+              }
               placeholder="Body HTML"
-              disabled
+              spellCheck="false"
             />
           </div>
 
           <div className="compact-progress-cell">
             <span>Sent / Total</span>
             <strong>
-              0 <small>/ 0</small>
+              {rowSent} <small>/ {rowTotal}</small>
             </strong>
             <div className="compact-progress-track">
-              <span style={{ width: '0%' }} />
+              <span style={{ width: `${rowProgress}%` }} />
             </div>
-            <small className="compact-failed">Failed: 0</small>
+            <small className="compact-failed">Failed: {rowFailed}</small>
           </div>
 
           <div className="compact-control-cell">
@@ -1752,13 +1852,23 @@ function App() {
               {row.recipientCount || 0} recipients
               {row.status !== 'ready' ? ' · Waiting for Gmail account' : ''}
             </small>
-            <button type="button" className="compact-send-button" disabled>
+            <button
+              type="button"
+              className="compact-send-button"
+              onClick={() => sendSenderRow(row)}
+              disabled={
+                row.status !== 'ready' ||
+                !row.recipientCount ||
+                rowCampaign?.status === 'Running'
+              }
+            >
               <Play size={14} />
-              Send
+              {rowCampaign?.status === 'Running' ? 'Sending' : 'Send'}
             </button>
           </div>
         </section>
-      ))}
+        )
+      })}
 
       <section className="campaign-builder">
         <div className="campaign-form">
