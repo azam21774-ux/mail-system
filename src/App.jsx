@@ -664,6 +664,73 @@ function App() {
     }
   }
 
+  const connectGmailForRow = async (row) => {
+    if (!window.electronAPI?.connectGmail) {
+      setSenderRowField(row.id, 'gmailConnectionError', 'Gmail OAuth is available in the desktop app.')
+      return
+    }
+
+    const clientId = (row.gmailOAuthClientId || '').trim()
+    const clientSecret = (row.gmailOAuthClientSecret || '').trim()
+    if (!clientId || !clientId.endsWith('.apps.googleusercontent.com')) {
+      setSenderRowField(
+        row.id,
+        'gmailConnectionError',
+        'Enter a valid Client ID ending in .apps.googleusercontent.com.'
+      )
+      return
+    }
+
+    setSenderRowField(row.id, 'gmailConnectionError', '')
+    setSenderRowField(row.id, 'gmailConnecting', true)
+
+    try {
+      const result = await window.electronAPI.connectGmail({
+        clientId,
+        clientSecret,
+      })
+      if (!result?.success || !result.account) {
+        setSenderRowField(
+          row.id,
+          'gmailConnectionError',
+          result?.error || 'Could not connect this Gmail account.'
+        )
+        return
+      }
+
+      setGmailAccounts((previous) => {
+        const next = previous.filter((item) => item.id !== result.account.id)
+        return [...next, result.account]
+      })
+      setSenderRows((previous) =>
+        previous.map((item) =>
+          item.id === row.id
+            ? {
+                ...item,
+                gmailAccountId: result.account.id,
+                profileName: result.account.email,
+                status: 'ready',
+                gmailConnectionError: '',
+              }
+            : item
+        )
+      )
+      addActivity(
+        'profile',
+        'Gmail account connected',
+        `${result.account.email} is ready for API Sending in row ${row.rowNumber}.`
+      )
+    } catch (error) {
+      setSenderRowField(
+        row.id,
+        'gmailConnectionError',
+        error.message || 'Could not connect this Gmail account.'
+      )
+    } finally {
+      setSenderRowField(row.id, 'gmailConnecting', false)
+    }
+  }
+
   const addProfile = () => {
     const name = profileName.trim()
     if (!name) return
@@ -1326,9 +1393,13 @@ function App() {
         {
           id: rowId,
           rowNumber: nextRowNumber,
-          gmailAccountId: selectedGmailAccountId || null,
-          profileName: selectedGmailAccount?.email || 'Connect Gmail account',
-          status: selectedGmailAccountId ? 'ready' : 'waiting',
+          gmailAccountId: null,
+          profileName: 'Connect Gmail account',
+          status: 'waiting',
+          gmailOAuthClientId: '',
+          gmailOAuthClientSecret: '',
+          gmailConnectionError: '',
+          gmailConnecting: false,
           subject: '',
           body: '',
           csvFile: null,
@@ -1385,6 +1456,16 @@ function App() {
         row.id === rowId ? { ...row, [field]: value } : row
       )
     )
+  }
+
+  const deleteSenderRow = (row) => {
+    const rowCampaign = row.campaignId
+      ? campaigns.find((campaign) => campaign.id === row.campaignId)
+      : null
+    if (rowCampaign?.status === 'Running') {
+      void stopCampaign(rowCampaign)
+    }
+    setSenderRows((previous) => previous.filter((item) => item.id !== row.id))
   }
 
   const generateAttachment = async () => {
@@ -1657,7 +1738,7 @@ function App() {
 
   const sendSenderRow = async (row) => {
     if (active === 'API Sending') {
-      const gmailAccountId = row.gmailAccountId || selectedGmailAccountId
+      const gmailAccountId = row.gmailAccountId
 
       if (!gmailAccountId) {
         showApiConnectionRequired()
