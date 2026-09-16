@@ -1183,16 +1183,6 @@ function App() {
       return
     }
 
-    if (!subject.trim()) {
-      alert('Please enter a subject.')
-      return
-    }
-
-    if (!body.trim()) {
-      alert('Please enter the email body.')
-      return
-    }
-
     const existingCampaign = campaigns.find(
       (item) => item.id === editingCampaignId
     )
@@ -1709,8 +1699,8 @@ function App() {
           <div className="form-card">
             <div className="form-card-header">
               <div>
-                <h3>Subject</h3>
-                <p>Write the subject your recipients will see.</p>
+                <h3>Subject (Optional)</h3>
+                <p>Add a subject or leave it blank.</p>
               </div>
             </div>
 
@@ -1726,8 +1716,8 @@ function App() {
           <div className="form-card">
             <div className="form-card-header">
               <div>
-                <h3>Email Body</h3>
-                <p>Use plain text or HTML content.</p>
+                <h3>Email Body (Optional)</h3>
+                <p>Add plain text or HTML, or leave it blank.</p>
               </div>
 
               <button
