@@ -978,6 +978,74 @@ async function clickGmailSend(page) {
   return false
 }
 
+async function confirmEmptyComposeIfVisible(page, timeout = 2500) {
+  const deadline = Date.now() + timeout
+
+  while (Date.now() < deadline) {
+    const dialogs = await page.$$(
+      '[role="dialog"], [role="alertdialog"], .Kj-JD'
+    )
+
+    for (const dialog of dialogs) {
+      const promptIsVisible = await dialog
+        .evaluate((element) => {
+          const style = window.getComputedStyle(element)
+          const rect = element.getBoundingClientRect()
+          const text = (element.innerText || element.textContent || '').trim()
+
+          return (
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            rect.width > 0 &&
+            rect.height > 0 &&
+            /without\s+(a\s+)?subject|without\s+(a\s+)?body|no\s+subject|no\s+body|empty\s+(subject|body)/i.test(
+              text
+            )
+          )
+        })
+        .catch(() => false)
+
+      if (!promptIsVisible) continue
+
+      const buttons = await dialog.$$('button, [role="button"], .Kj-JD-Kq')
+      for (const button of buttons) {
+        const shouldConfirm = await button
+          .evaluate((element) => {
+            const style = window.getComputedStyle(element)
+            const rect = element.getBoundingClientRect()
+            const text = (element.innerText || element.textContent || '')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .toLowerCase()
+
+            return (
+              style.display !== 'none' &&
+              style.visibility !== 'hidden' &&
+              rect.width > 0 &&
+              rect.height > 0 &&
+              !/cancel|back|edit/.test(text) &&
+              /^(send|send anyway|send without|yes|continue|ok)$/.test(text)
+            )
+          })
+          .catch(() => false)
+
+        if (!shouldConfirm) continue
+
+        try {
+          await button.click()
+          return true
+        } catch {
+          // Gmail may replace the dialog node after the first click.
+        }
+      }
+    }
+
+    await wait(150)
+  }
+
+  return false
+}
+
 async function pressSendShortcut(page) {
   const modifier = process.platform === 'darwin' ? 'Meta' : 'Control'
   await page.keyboard.down(modifier)
@@ -1004,6 +1072,12 @@ async function sendOneEmail(
   const context = templateContext
   const expandedSubject = expandTemplate(payload.subject, row, context)
   const body = expandTemplate(payload.body, row, context)
+  const bodyText = body
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .trim()
+  const needsEmptyComposeConfirmation =
+    !expandedSubject.trim() || !bodyText
   const typingDelay = Math.max(Number(payload.typingDelayMs) || 0, 0)
   const composeButton = await page.waitForSelector(
     '[gh="cm"], [aria-label="Compose"], [role="button"][aria-label="Compose"]',
@@ -1087,6 +1161,10 @@ async function sendOneEmail(
     await pressSendShortcut(page)
   }
 
+  if (needsEmptyComposeConfirmation) {
+    await confirmEmptyComposeIfVisible(page)
+  }
+
   const composeClosed = await page
     .waitForSelector('input[name="subjectbox"]', {
       hidden: true,
@@ -1098,6 +1176,9 @@ async function sendOneEmail(
   if (!composeClosed && clickedSendButton) {
     // The toolbar can be visible before Gmail is ready to accept the click.
     await pressSendShortcut(page)
+    if (needsEmptyComposeConfirmation) {
+      await confirmEmptyComposeIfVisible(page)
+    }
   }
 
   const sent = await page
