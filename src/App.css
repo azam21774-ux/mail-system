@@ -168,6 +168,11 @@ button {
 
 .sidebar {
   width: 245px;
+  flex: 0 0 245px;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
   min-height: 100vh;
   background: #ffffff;
   border-right: 1px solid #e8e9ec;
@@ -786,6 +791,7 @@ nav {
 @media (max-width: 900px) {
   .sidebar {
     width: 210px;
+    flex-basis: 210px;
   }
 
   .stats {

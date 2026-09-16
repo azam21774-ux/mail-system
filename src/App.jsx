@@ -722,6 +722,141 @@ function MailSystemApp() {
   const [gmailConnectionError, setGmailConnectionError] = useState('')
   const [gmailOAuthClientId, setGmailOAuthClientId] = useState('')
   const [gmailOAuthClientSecret, setGmailOAuthClientSecret] = useState('')
+  const activeSendingModeRef = useRef('UI Sending')
+  const campaignModesRef = useRef(new Map())
+  const sendingModeDrafts = useRef({
+    'UI Sending': null,
+    'API Sending': null,
+  })
+
+  const createSendingModeDefaults = (mode) => ({
+    senderRows: [],
+    campaigns: [],
+    isPrimaryApiRowVisible: true,
+    selectedGmailAccountId: '',
+    gmailConnectionError: '',
+    gmailOAuthClientId: '',
+    gmailOAuthClientSecret: '',
+    campaignName: 'Mail Campaign',
+    selectedProfileIds:
+      mode === 'UI Sending' && profiles[0] ? [String(profiles[0].id)] : [],
+    subject: '',
+    body: '',
+    htmlMode: false,
+    csvFile: null,
+    attachment: null,
+    attachmentMode: 'html',
+    attachmentHtml:
+      '<h1>Hello {{name}}</h1><p>Your attached document is ready.</p>',
+    tfnValue: '',
+    attachmentFormat: 'PDF',
+    attachmentFileName: '{{id}}',
+    editingCampaignId: null,
+    recipientCount: 0,
+    csvHeaders: [],
+    csvRows: [],
+    delaySeconds: settings.defaultDelay ?? 0,
+    typingDelayMs: 0,
+  })
+
+  const captureSendingModeState = () => ({
+    senderRows,
+    campaigns,
+    isPrimaryApiRowVisible,
+    selectedGmailAccountId,
+    gmailConnectionError,
+    gmailOAuthClientId,
+    gmailOAuthClientSecret,
+    campaignName,
+    selectedProfileIds,
+    subject,
+    body,
+    htmlMode,
+    csvFile,
+    attachment,
+    attachmentMode,
+    attachmentHtml,
+    tfnValue,
+    attachmentFormat,
+    attachmentFileName,
+    editingCampaignId,
+    recipientCount,
+    csvHeaders,
+    csvRows,
+    delaySeconds,
+    typingDelayMs,
+  })
+
+  const applySendingModeState = (state) => {
+    setSenderRows(state.senderRows || [])
+    setCampaigns(state.campaigns || [])
+    campaignsRef.current = state.campaigns || []
+    setIsPrimaryApiRowVisible(state.isPrimaryApiRowVisible !== false)
+    setSelectedGmailAccountId(state.selectedGmailAccountId || '')
+    setGmailConnectionError(state.gmailConnectionError || '')
+    setGmailOAuthClientId(state.gmailOAuthClientId || '')
+    setGmailOAuthClientSecret(state.gmailOAuthClientSecret || '')
+    setCampaignName(state.campaignName || 'Mail Campaign')
+    setSelectedProfileIds(state.selectedProfileIds || [])
+    setSubject(state.subject || '')
+    setBody(state.body || '')
+    setHtmlMode(Boolean(state.htmlMode))
+    setCsvFile(state.csvFile || null)
+    setAttachment(state.attachment || null)
+    setAttachmentMode(state.attachmentMode || 'html')
+    setAttachmentHtml(
+      state.attachmentHtml ||
+        '<h1>Hello {{name}}</h1><p>Your attached document is ready.</p>'
+    )
+    setTfnValue(state.tfnValue || '')
+    setAttachmentFormat(state.attachmentFormat || 'PDF')
+    setAttachmentFileName(state.attachmentFileName || '{{id}}')
+    setEditingCampaignId(state.editingCampaignId || null)
+    setRecipientCount(state.recipientCount || 0)
+    setCsvHeaders(state.csvHeaders || [])
+    setCsvRows(state.csvRows || [])
+    setDelaySeconds(state.delaySeconds ?? settings.defaultDelay ?? 0)
+    setTypingDelayMs(state.typingDelayMs || 0)
+  }
+
+  const updateSendingModeCampaigns = (mode, updater) => {
+    const currentMode = activeSendingModeRef.current
+
+    if (mode === currentMode) {
+      const nextCampaigns = updater(campaignsRef.current)
+      campaignsRef.current = nextCampaigns
+      setCampaigns(nextCampaigns)
+      return nextCampaigns
+    }
+
+    const draft =
+      sendingModeDrafts.current[mode] || createSendingModeDefaults(mode)
+    const nextCampaigns = updater(draft.campaigns || [])
+    sendingModeDrafts.current[mode] = {
+      ...draft,
+      campaigns: nextCampaigns,
+    }
+    return nextCampaigns
+  }
+
+  const switchSendingMode = (nextMode) => {
+    if (active === nextMode) {
+      setShowCreateCampaign(false)
+      return
+    }
+
+    if (active === 'UI Sending' || active === 'API Sending') {
+      sendingModeDrafts.current[active] = captureSendingModeState()
+    }
+
+    const nextState =
+      sendingModeDrafts.current[nextMode] ||
+      createSendingModeDefaults(nextMode)
+    applySendingModeState(nextState)
+    activeSendingModeRef.current = nextMode
+    setActive(nextMode)
+    setShowCreateCampaign(false)
+  }
 
   const sendingModes = [
     { name: 'UI Sending', icon: Mail },
@@ -989,7 +1124,7 @@ function MailSystemApp() {
     setSenderRows((prev) =>
       prev.filter((row) => row.profileId !== profile.id)
     )
-    setCampaigns((prev) =>
+    updateSendingModeCampaigns(activeSendingModeRef.current, (prev) =>
       prev.map((campaign) => {
         const profileIds = (
           campaign.profileIds?.length
@@ -1036,7 +1171,7 @@ function MailSystemApp() {
   }, [openProfileMenuId])
 
   const startCampaignsForProfile = (profileId) => {
-    setCampaigns((prev) =>
+    updateSendingModeCampaigns(activeSendingModeRef.current, (prev) =>
       prev.map((campaign) => {
         const completed =
           (campaign.sent || 0) + (campaign.failed || 0) >= campaign.recipients
@@ -1058,7 +1193,7 @@ function MailSystemApp() {
   }
 
   const pauseCampaignsForProfile = (profileId) => {
-    setCampaigns((prev) =>
+    updateSendingModeCampaigns(activeSendingModeRef.current, (prev) =>
       prev.map((campaign) => {
         const assignedProfileIds = campaign.profileIds?.length
           ? campaign.profileIds
@@ -1119,7 +1254,7 @@ function MailSystemApp() {
 
     activeCampaignRuns.current.add(campaign.id)
 
-    setCampaigns((prev) =>
+    updateSendingModeCampaigns(activeSendingModeRef.current, (prev) =>
       prev.map((item) =>
         item.id === campaign.id
           ? {
@@ -1181,7 +1316,7 @@ function MailSystemApp() {
       })
 
       if (!result?.success) {
-        setCampaigns((prev) =>
+        updateSendingModeCampaigns(activeSendingModeRef.current, (prev) =>
           prev.map((item) =>
             item.id === campaign.id
               ? { ...item, status: 'Failed', lastError: result?.error }
@@ -1191,7 +1326,7 @@ function MailSystemApp() {
         alert(result?.error || 'Campaign could not be started.')
       }
     } catch (error) {
-      setCampaigns((prev) =>
+      updateSendingModeCampaigns(activeSendingModeRef.current, (prev) =>
         prev.map((item) =>
           item.id === campaign.id
             ? { ...item, status: 'Failed', lastError: error.message }
@@ -1253,7 +1388,7 @@ function MailSystemApp() {
     }
 
     activeCampaignRuns.current.add(campaign.id)
-    setCampaigns((prev) =>
+    updateSendingModeCampaigns(activeSendingModeRef.current, (prev) =>
       prev.map((item) =>
         item.id === campaign.id
           ? {
@@ -1306,7 +1441,7 @@ function MailSystemApp() {
       })
 
       if (!result?.success) {
-        setCampaigns((prev) =>
+        updateSendingModeCampaigns(activeSendingModeRef.current, (prev) =>
           prev.map((item) =>
             item.id === campaign.id
               ? { ...item, status: 'Failed', lastError: result?.error }
@@ -1316,7 +1451,7 @@ function MailSystemApp() {
         alert(result?.error || 'API campaign could not be started.')
       }
     } catch (error) {
-      setCampaigns((prev) =>
+      updateSendingModeCampaigns(activeSendingModeRef.current, (prev) =>
         prev.map((item) =>
           item.id === campaign.id
             ? { ...item, status: 'Failed', lastError: error.message }
@@ -1462,7 +1597,24 @@ function MailSystemApp() {
 
   useEffect(() => {
     const unsubscribe = window.electronAPI?.onCampaignProgress?.((progress) => {
-      const updatedCampaigns = campaignsRef.current.map((campaign) =>
+      const knownMode = campaignModesRef.current.get(progress.campaignId)
+      const campaignMode =
+        knownMode ||
+        (campaignsRef.current.some(
+          (campaign) => campaign.id === progress.campaignId
+        )
+          ? activeSendingModeRef.current
+          : ['UI Sending', 'API Sending'].find((mode) =>
+              sendingModeDrafts.current[mode]?.campaigns?.some(
+                (campaign) => campaign.id === progress.campaignId
+              )
+            )) ||
+        activeSendingModeRef.current
+      const sourceCampaigns =
+        campaignMode === activeSendingModeRef.current
+          ? campaignsRef.current
+          : sendingModeDrafts.current[campaignMode]?.campaigns || []
+      const updatedCampaigns = sourceCampaigns.map((campaign) =>
         campaign.id === progress.campaignId
           ? {
               ...campaign,
@@ -1487,8 +1639,7 @@ function MailSystemApp() {
           : campaign
       )
 
-      campaignsRef.current = updatedCampaigns
-      setCampaigns(updatedCampaigns)
+      updateSendingModeCampaigns(campaignMode, () => updatedCampaigns)
 
       if (progress.recipientEmail) {
         addActivity(
@@ -1865,7 +2016,7 @@ function MailSystemApp() {
       .filter((profile) => profileIds.includes(profile.id))
       .map((profile) => profile.name)
 
-    return {
+    const campaign = {
       id: editingCampaignId || Date.now(),
       name: campaignName.trim(),
       subject,
@@ -1898,13 +2049,16 @@ function MailSystemApp() {
       updatedAt: new Date().toLocaleString(),
       status: existingCampaign?.status || 'Draft',
     }
+
+    campaignModesRef.current.set(campaign.id, activeSendingModeRef.current)
+    return campaign
   }
 
   const saveCampaign = () => {
     const campaign = buildCampaignPayload()
     if (!campaign) return null
 
-    setCampaigns((prev) =>
+    updateSendingModeCampaigns(activeSendingModeRef.current, (prev) =>
       editingCampaignId
         ? prev.map((item) => (item.id === editingCampaignId ? campaign : item))
         : [campaign, ...prev]
@@ -1922,7 +2076,7 @@ function MailSystemApp() {
     const campaign = buildCampaignPayload()
     if (!campaign) return
 
-    setCampaigns((prev) =>
+    updateSendingModeCampaigns(activeSendingModeRef.current, (prev) =>
       editingCampaignId
         ? prev.map((item) => (item.id === editingCampaignId ? campaign : item))
         : [campaign, ...prev]
@@ -2009,7 +2163,8 @@ function MailSystemApp() {
         status: existingCampaign?.status || 'Draft',
       }
 
-      setCampaigns((previous) =>
+      campaignModesRef.current.set(campaign.id, activeSendingModeRef.current)
+      updateSendingModeCampaigns(activeSendingModeRef.current, (previous) =>
         existingCampaign
           ? previous.map((item) => (item.id === campaign.id ? campaign : item))
           : [campaign, ...previous]
@@ -2067,7 +2222,8 @@ function MailSystemApp() {
       status: existingCampaign?.status || 'Draft',
     }
 
-    setCampaigns((previous) =>
+    campaignModesRef.current.set(campaign.id, activeSendingModeRef.current)
+    updateSendingModeCampaigns(activeSendingModeRef.current, (previous) =>
       existingCampaign
         ? previous.map((item) => (item.id === campaign.id ? campaign : item))
         : [campaign, ...previous]
@@ -2097,7 +2253,7 @@ function MailSystemApp() {
       return
     }
 
-    setCampaigns((previous) =>
+    updateSendingModeCampaigns(activeSendingModeRef.current, (previous) =>
       previous.map((item) =>
         item.id === campaign.id ? { ...item, status: 'Paused' } : item
       )
@@ -2112,7 +2268,10 @@ function MailSystemApp() {
 
     if (!confirmed) return
 
-    setCampaigns((prev) => prev.filter((item) => item.id !== campaign.id))
+    updateSendingModeCampaigns(
+      activeSendingModeRef.current,
+      (prev) => prev.filter((item) => item.id !== campaign.id)
+    )
     addActivity('campaign', 'Campaign deleted', `${campaign.name} was removed.`)
   }
 
@@ -3322,10 +3481,7 @@ function MailSystemApp() {
             <button
               key={name}
               className={`nav-item ${active === name ? 'active' : ''}`}
-               onClick={() => {
-                 setActive(name)
-                 setShowCreateCampaign(false)
-               }}
+                onClick={() => switchSendingMode(name)}
             >
               <Icon size={18} />
               <span>{name}</span>
