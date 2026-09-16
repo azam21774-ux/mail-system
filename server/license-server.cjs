@@ -33,6 +33,20 @@ if (!TOKEN_SECRET) {
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 const adminFile = path.join(__dirname, 'admin.html')
+const webAppDirectory = path.join(__dirname, '..', 'dist')
+
+const contentTypes = {
+  '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+}
 
 function json(response, statusCode, payload) {
   response.writeHead(statusCode, {
@@ -56,6 +70,51 @@ function text(response, statusCode, content) {
     'Cache-Control': 'no-store',
   })
   response.end(content)
+}
+
+function serveWebApp(response, pathname) {
+  const relativePath = pathname === '/' ? 'index.html' : pathname.slice(1)
+  let decodedPath
+
+  try {
+    decodedPath = decodeURIComponent(relativePath)
+  } catch {
+    text(response, 400, 'Invalid path')
+    return true
+  }
+
+  const filePath = path.resolve(webAppDirectory, decodedPath)
+  const normalizedRoot = `${path.resolve(webAppDirectory)}${path.sep}`
+  if (!filePath.startsWith(normalizedRoot)) {
+    text(response, 403, 'Forbidden')
+    return true
+  }
+
+  try {
+    const extension = path.extname(filePath).toLowerCase()
+    response.writeHead(200, {
+      'Content-Type': contentTypes[extension] || 'application/octet-stream',
+      'Cache-Control':
+        extension === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
+    })
+    response.end(fs.readFileSync(filePath))
+  } catch {
+    if (pathname !== '/') {
+      try {
+        response.writeHead(200, {
+          'Content-Type': contentTypes['.html'],
+          'Cache-Control': 'no-cache',
+        })
+        response.end(fs.readFileSync(path.join(webAppDirectory, 'index.html')))
+      } catch {
+        text(response, 404, 'Mail System preview is not built yet. Run npm run build.')
+      }
+    } else {
+      text(response, 404, 'Mail System preview is not built yet. Run npm run build.')
+    }
+  }
+
+  return true
 }
 
 function parseCookies(request) {
@@ -471,7 +530,7 @@ const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`)
 
   try {
-    if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/admin')) {
+    if (request.method === 'GET' && url.pathname === '/admin') {
       html(response, 200, fs.readFileSync(adminFile, 'utf8'))
       return
     }
@@ -483,6 +542,11 @@ const server = http.createServer(async (request, response) => {
 
     if (url.pathname.startsWith('/api/license/')) {
       await handleLicense(request, response, url)
+      return
+    }
+
+    if (request.method === 'GET') {
+      serveWebApp(response, url.pathname)
       return
     }
 
