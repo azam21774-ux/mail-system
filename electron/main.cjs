@@ -937,9 +937,7 @@ async function clickGmailSend(page, timeout = 10000) {
     'div[role="button"].aoO[data-tooltip^="Send"]',
     'div[role="button"][data-tooltip^="Send"]',
     'div[role="button"][command="send"]',
-    'div[role="button"][aria-label^="Send"]',
     'button[aria-label*="Send" i]',
-    '[aria-label^="Send"]',
     '[data-tooltip^="Send"]',
     '[command="send"]',
     '.gU.Up',
@@ -956,7 +954,29 @@ async function clickGmailSend(page, timeout = 10000) {
         .evaluate((element) => {
           const style = window.getComputedStyle(element)
           const rect = element.getBoundingClientRect()
+          const normalize = (value) =>
+            String(value || '')
+              .replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u206f]/g, '')
+              .replace(/\s+/g, ' ')
+              .trim()
+          const labels = [
+            element.getAttribute('aria-label'),
+            element.getAttribute('data-tooltip'),
+            element.getAttribute('title'),
+          ]
+            .map(normalize)
+            .filter(Boolean)
+          const isComposeSend =
+            element.getAttribute('command') === 'send' ||
+            element.classList.contains('aoO') ||
+            labels.some(
+              (label) =>
+                /^send(?:\s*(?:\(|\[|$))/i.test(label) &&
+                !/\bfeedback\b/i.test(label)
+            )
+
           return (
+            isComposeSend &&
             style.display !== 'none' &&
             style.visibility !== 'hidden' &&
             rect.width > 0 &&
@@ -974,8 +994,9 @@ async function clickGmailSend(page, timeout = 10000) {
         const box = await button.boundingBox()
         if (!box) continue
 
-        // Use Puppeteer's real mouse interaction instead of HTMLElement.click().
-        // Gmail's toolbar listens for the browser mouse event sequence.
+        // Click the verified compose Send control. The previous broad
+        // aria-label selector could match Gmail's unrelated Send feedback
+        // control before it reached the compose toolbar.
         await page.mouse.click(
           box.x + box.width / 2,
           box.y + box.height / 2
