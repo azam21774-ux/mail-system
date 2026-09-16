@@ -572,12 +572,9 @@ function App() {
   })
   const [settingsSaved, setSettingsSaved] = useState(false)
 
-  const menu = [
-    { name: 'Dashboard', icon: LayoutDashboard },
-    { name: 'Profiles', icon: Users },
-    { name: 'Campaigns', icon: Megaphone },
-    { name: 'Activity Log', icon: Activity },
-    { name: 'Settings', icon: Settings },
+  const sendingModes = [
+    { name: 'UI Sending', icon: Mail },
+    { name: 'API Sending', icon: Code },
   ]
 
   const addActivity = (type, title, detail) => {
@@ -1650,7 +1647,7 @@ function App() {
 
   const showApiConnectionRequired = () => {
     alert(
-      'Gmail API is not connected yet. Connect the Gmail integration to enable API Sending.'
+      'Gmail OAuth is not connected yet. Accept the secure Gmail connection prompt to enable API Sending.'
     )
   }
 
@@ -1698,7 +1695,14 @@ function App() {
             </span>
           </div>
           {isApiSending ? (
-            <span className="compact-api-connection-badge">OAuth needed</span>
+            <button
+              type="button"
+              className="compact-api-connection-badge"
+              onClick={showApiConnectionRequired}
+              title="Connect Gmail with OAuth"
+            >
+              Connect Gmail
+            </button>
           ) : (
             <select
               className="compact-profile-select"
@@ -2511,14 +2515,17 @@ function App() {
           <span>Mail System</span>
         </div>
 
-        <div className="menu-label">MAIN MENU</div>
+         <div className="menu-label">SENDING</div>
 
         <nav>
-          {menu.map(({ name, icon: Icon }) => (
+           {sendingModes.map(({ name, icon: Icon }) => (
             <button
               key={name}
               className={`nav-item ${active === name ? 'active' : ''}`}
-              onClick={() => setActive(name)}
+               onClick={() => {
+                 setActive(name)
+                 setShowCreateCampaign(false)
+               }}
             >
               <Icon size={18} />
               <span>{name}</span>

@@ -2848,10 +2848,23 @@ nav {
   padding: 4px 7px;
   color: #fbbf24;
   background: rgba(245, 158, 11, 0.1);
+  font-family: inherit;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.02em;
+  line-height: 1.2;
   text-transform: uppercase;
+  cursor: pointer;
+}
+
+.compact-api-connection-badge:hover {
+  border-color: rgba(251, 191, 36, 0.68);
+  background: rgba(245, 158, 11, 0.18);
+}
+
+.compact-api-connection-badge:focus-visible {
+  outline: 2px solid #fbbf24;
+  outline-offset: 2px;
 }
 
 .compact-profile-select {
