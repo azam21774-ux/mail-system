@@ -575,10 +575,7 @@ function App() {
   const [selectedGmailAccountId, setSelectedGmailAccountId] = useState('')
   const [isConnectingGmail, setIsConnectingGmail] = useState(false)
   const [gmailConnectionError, setGmailConnectionError] = useState('')
-  const [gmailOAuthClientId, setGmailOAuthClientId] = useState(() => {
-    if (typeof window === 'undefined') return ''
-    return window.localStorage.getItem('mail-system-google-oauth-client-id') || ''
-  })
+  const [gmailOAuthClientId, setGmailOAuthClientId] = useState('')
   const [gmailOAuthClientSecret, setGmailOAuthClientSecret] = useState('')
 
   const sendingModes = [
@@ -601,6 +598,8 @@ function App() {
 
   useEffect(() => {
     let mounted = true
+
+    window.localStorage.removeItem('mail-system-google-oauth-client-id')
 
     window.electronAPI?.listGmailAccounts?.().then((result) => {
       if (!mounted || !result?.success) return
@@ -629,7 +628,6 @@ function App() {
       return
     }
 
-    window.localStorage.setItem('mail-system-google-oauth-client-id', clientId)
     setGmailConnectionError('')
     setIsConnectingGmail(true)
 
@@ -2622,7 +2620,10 @@ function App() {
             <div className="form-card-header">
               <div>
                 <h3>Sending Delay</h3>
-                <p>Wait between each recipient to control the send pace.</p>
+                <p>
+                  Wait between recipients. API Sending uses up to 4 parallel
+                  sends when set to 0s.
+                </p>
               </div>
               <div className="delay-value">
                 <Clock3 size={15} />

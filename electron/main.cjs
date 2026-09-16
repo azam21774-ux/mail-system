@@ -1981,16 +1981,9 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
     const connection = await connectToGmail(payload.port)
     browser = connection.browser
 
-    for (const row of recipients) {
+    const processApiRecipient = async (row) => {
       if (job.cancelled) {
-        emitProgress({
-          status: 'Paused',
-          sent,
-          failed,
-          pending: Math.max(totalRecipients - startIndex - processed, 0),
-          nextRecipientIndex: startIndex + processed,
-        })
-        return { success: false, cancelled: true, sent, failed }
+        return
       }
 
       const email = getRecipientValue(row, 'email')
@@ -2050,10 +2043,43 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
           fs.unlinkSync(recipientAttachmentPath)
         }
       }
+    }
 
-      if (payload.delaySeconds > 0 && processed < recipients.length) {
-        await wait(Number(payload.delaySeconds) * 1000)
+    const delayMilliseconds = Math.max(Number(payload.delaySeconds) || 0, 0) * 1000
+    if (delayMilliseconds > 0) {
+      for (const row of recipients) {
+        await processApiRecipient(row)
+        if (job.cancelled) break
+        if (processed < recipients.length) {
+          await wait(delayMilliseconds)
+        }
       }
+    } else {
+      let nextRecipientIndex = 0
+      const worker = async () => {
+        while (!job.cancelled) {
+          const index = nextRecipientIndex
+          nextRecipientIndex += 1
+          if (index >= recipients.length) return
+          await processApiRecipient(recipients[index])
+        }
+      }
+
+      const workerCount = Math.min(4, recipients.length)
+      await Promise.all(
+        Array.from({ length: workerCount }, () => worker())
+      )
+    }
+
+    if (job.cancelled) {
+      emitProgress({
+        status: 'Paused',
+        sent,
+        failed,
+        pending: Math.max(totalRecipients - startIndex - processed, 0),
+        nextRecipientIndex: startIndex + processed,
+      })
+      return { success: false, cancelled: true, sent, failed }
     }
 
     emitProgress({
