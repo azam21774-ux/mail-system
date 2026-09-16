@@ -580,11 +580,6 @@ function App() {
     { name: 'Settings', icon: Settings },
   ]
 
-  const sendingModes = [
-    { name: 'UI Sending', icon: Mail },
-    { name: 'API Sending', icon: Code },
-  ]
-
   const addActivity = (type, title, detail) => {
     setActivityLog((previous) => [
       {
@@ -2530,23 +2525,6 @@ function App() {
             </button>
           ))}
         </nav>
-
-         <div className="menu-label sending-menu-label">SENDING</div>
-         <nav>
-           {sendingModes.map(({ name, icon: Icon }) => (
-             <button
-               key={name}
-               className={`nav-item ${active === name ? 'active' : ''}`}
-               onClick={() => {
-                 setActive(name)
-                 setShowCreateCampaign(false)
-               }}
-             >
-               <Icon size={18} />
-               <span>{name}</span>
-             </button>
-           ))}
-         </nav>
 
         <div className="sidebar-bottom">
           <div className="system-status">
