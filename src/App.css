@@ -2707,3 +2707,301 @@ nav {
     justify-content: center;
   }
 }
+
+.compact-send-panel {
+  display: grid;
+  grid-template-columns: 30px minmax(180px, 1.15fr) minmax(280px, 2.5fr) minmax(120px, 0.75fr) minmax(180px, 1fr);
+  gap: 10px;
+  align-items: stretch;
+  margin-bottom: 10px;
+  padding: 12px;
+  border: 1px solid #2b3139;
+  border-radius: 6px;
+  background: rgba(11, 13, 16, 0.98);
+  box-shadow: 0 12px 38px rgba(0, 0, 0, 0.25);
+}
+
+.compact-row-number {
+  display: grid;
+  place-items: center;
+  color: #b8c1cc;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.compact-profile-cell,
+.compact-message-cell,
+.compact-progress-cell,
+.compact-control-cell {
+  min-width: 0;
+  border-left: 1px solid #252b32;
+  padding-left: 10px;
+}
+
+.compact-profile-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: start;
+  align-items: center;
+  gap: 7px;
+}
+
+.compact-profile-cell > div:not(.compact-profile-actions) {
+  min-width: 0;
+  flex: 1 1 90px;
+}
+
+.compact-profile-cell strong,
+.compact-profile-cell span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-profile-cell strong {
+  color: #d9e0e8;
+  font-size: 10px;
+}
+
+.compact-profile-cell span {
+  margin-top: 3px;
+  color: #788492;
+  font-size: 9px;
+}
+
+.compact-status-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: #d3a72c;
+  box-shadow: 0 0 0 3px rgba(211, 167, 44, 0.12);
+}
+
+.compact-status-dot.running {
+  background: #62dc72;
+  box-shadow: 0 0 0 3px rgba(98, 220, 114, 0.12);
+}
+
+.compact-status-dot.failed {
+  background: #ef6666;
+  box-shadow: 0 0 0 3px rgba(239, 102, 102, 0.12);
+}
+
+.compact-profile-select {
+  width: 100%;
+  min-height: 27px;
+  border: 1px solid #303944;
+  border-radius: 4px;
+  padding: 4px 6px;
+  background: #080a0d;
+  color: #aeb9c5;
+  font-size: 9px;
+}
+
+.compact-profile-actions {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+}
+
+.compact-profile-actions button {
+  border: 1px solid #303944;
+  border-radius: 4px;
+  padding: 4px 7px;
+  background: #151a20;
+  color: #aeb9c5;
+  cursor: pointer;
+  font-size: 9px;
+}
+
+.compact-profile-actions button:hover {
+  border-color: #2e8bff;
+  color: #fff;
+}
+
+.compact-message-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.compact-recipient-label {
+  color: #6e7a87;
+  font-size: 9px;
+}
+
+.compact-subject-input,
+.compact-body-input {
+  width: 100%;
+  border: 1px solid #303944;
+  border-radius: 4px;
+  outline: none;
+  background: #080a0d;
+  color: #dce3eb;
+  font-size: 11px;
+}
+
+.compact-subject-input {
+  height: 25px;
+  padding: 4px 7px;
+}
+
+.compact-body-input {
+  min-height: 28px;
+  resize: vertical;
+  padding: 5px 7px;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+}
+
+.compact-subject-input:focus,
+.compact-body-input:focus,
+.compact-profile-select:focus {
+  border-color: #287fe8;
+  box-shadow: 0 0 0 2px rgba(40, 127, 232, 0.15);
+}
+
+.compact-subject-input::placeholder,
+.compact-body-input::placeholder {
+  color: #596572;
+}
+
+.compact-progress-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+}
+
+.compact-progress-cell > span,
+.compact-progress-cell > small {
+  color: #72808e;
+  font-size: 9px;
+}
+
+.compact-progress-cell strong {
+  color: #6bdf79;
+  font-size: 15px;
+}
+
+.compact-progress-cell strong small {
+  color: #a3b0bc;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.compact-progress-track {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #273039;
+}
+
+.compact-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #63db70;
+  transition: width 0.2s ease;
+}
+
+.compact-progress-cell .compact-failed {
+  color: #df6666;
+}
+
+.compact-control-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+
+.compact-csv-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid #303944;
+  border-radius: 4px;
+  padding: 6px 7px;
+  color: #c2ccd7;
+  font-size: 10px;
+}
+
+.compact-csv-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-control-cell > small {
+  padding-left: 2px;
+  color: #6e7a87;
+  font-size: 9px;
+}
+
+.compact-clear-recipients {
+  align-self: end;
+  border: 0;
+  padding: 1px 0;
+  background: transparent;
+  color: #e16161;
+  cursor: pointer;
+  font-size: 9px;
+}
+
+.compact-clear-recipients:hover {
+  color: #ff8a8a;
+}
+
+.compact-send-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 4px;
+  padding: 7px 10px;
+  background: #1677ef;
+  color: white;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.compact-send-button:hover {
+  background: #318dff;
+}
+
+.compact-campaign-shell .form-card:nth-child(1),
+.compact-campaign-shell .form-card:nth-child(2),
+.compact-campaign-shell .form-card:nth-child(7),
+.compact-campaign-shell .form-card:nth-child(8) {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .compact-send-panel {
+    grid-template-columns: 26px minmax(160px, 1fr) minmax(240px, 1.5fr);
+  }
+
+  .compact-progress-cell,
+  .compact-control-cell {
+    grid-column: span 1;
+  }
+}
+
+@media (max-width: 600px) {
+  .compact-send-panel {
+    grid-template-columns: 24px 1fr;
+  }
+
+  .compact-profile-cell,
+  .compact-message-cell,
+  .compact-progress-cell,
+  .compact-control-cell {
+    grid-column: 2;
+  }
+}

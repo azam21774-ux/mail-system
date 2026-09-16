@@ -526,8 +526,8 @@ function App() {
   const [showCreateCampaign, setShowCreateCampaign] = useState(false)
   const [editingCampaignId, setEditingCampaignId] = useState(null)
 
-  const [campaignName, setCampaignName] = useState('')
-  const [selectedProfileIds, setSelectedProfileIds] = useState([])
+  const [campaignName, setCampaignName] = useState('Mail Campaign')
+  const [selectedProfileIds, setSelectedProfileIds] = useState(['1'])
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [htmlMode, setHtmlMode] = useState(false)
@@ -1080,7 +1080,7 @@ function App() {
   }
 
   const resetCampaignForm = () => {
-    setCampaignName('')
+    setCampaignName('Mail Campaign')
     setSelectedProfileIds(profiles[0] ? [String(profiles[0].id)] : [])
     setSubject('')
     setBody('')
@@ -1172,15 +1172,15 @@ function App() {
     reader.readAsText(file)
   }
 
-  const saveCampaign = () => {
+  const buildCampaignPayload = () => {
     if (!campaignName.trim()) {
       alert('Please enter a campaign name.')
-      return
+      return null
     }
 
     if (!csvFile) {
       alert('Please upload a CSV file.')
-      return
+      return null
     }
 
     const existingCampaign = campaigns.find(
@@ -1192,7 +1192,7 @@ function App() {
       .filter((profile) => profileIds.includes(profile.id))
       .map((profile) => profile.name)
 
-    const campaign = {
+    return {
       id: editingCampaignId || Date.now(),
       name: campaignName.trim(),
       subject,
@@ -1222,20 +1222,52 @@ function App() {
       updatedAt: new Date().toLocaleString(),
       status: existingCampaign?.status || 'Draft',
     }
+  }
+
+  const saveCampaign = () => {
+    const campaign = buildCampaignPayload()
+    if (!campaign) return null
 
     setCampaigns((prev) =>
       editingCampaignId
         ? prev.map((item) => (item.id === editingCampaignId ? campaign : item))
         : [campaign, ...prev]
     )
-    setShowCreateCampaign(false)
-    setEditingCampaignId(null)
+    setEditingCampaignId(campaign.id)
     addActivity(
       'campaign',
       editingCampaignId ? 'Campaign updated' : 'Campaign created',
       `${campaign.name} has been saved.`
     )
-    resetCampaignForm()
+    return campaign
+  }
+
+  const sendCurrentCampaign = () => {
+    const campaign = buildCampaignPayload()
+    if (!campaign) return
+
+    setCampaigns((prev) =>
+      editingCampaignId
+        ? prev.map((item) => (item.id === editingCampaignId ? campaign : item))
+        : [campaign, ...prev]
+    )
+    setEditingCampaignId(campaign.id)
+
+    const profile = profiles.find((item) =>
+      campaign.profileIds.includes(item.id)
+    )
+
+    if (!profile) {
+      alert('Select a Chrome profile before sending.')
+      return
+    }
+
+    if (!profile.running) {
+      alert('Open and start the selected Chrome profile before sending.')
+      return
+    }
+
+    void runCampaignOnProfile(campaign, profile)
   }
 
   const deleteCampaign = (campaign) => {
@@ -1334,22 +1366,135 @@ function App() {
     setBody((prev) => `${prev}${prev ? ' ' : ''}${tag}`)
   }
 
+  const liveCampaign = editingCampaignId
+    ? campaigns.find((campaign) => campaign.id === editingCampaignId)
+    : null
+  const liveSent = liveCampaign?.sent || 0
+  const liveFailed = liveCampaign?.failed || 0
+  const liveTotal = liveCampaign?.recipients ?? recipientCount
+  const liveProgress = liveTotal
+    ? Math.min(((liveSent + liveFailed) / liveTotal) * 100, 100)
+    : 0
+  const selectedProfile = profiles.find((profile) =>
+    selectedProfileIds.includes(String(profile.id))
+  )
+  const compactStatus = liveCampaign?.status || (
+    selectedProfile?.running ? 'Running' : 'Ready'
+  )
+
   const campaignComposer = (
     <div className="content compact-campaign-shell">
       <section className="page-title-row">
         <div>
-          <span className="eyebrow">CAMPAIGN BUILDER</span>
-          <h2>Create Campaign</h2>
-          <p>Prepare recipients, attachments and your email content.</p>
+          <span className="eyebrow">MAIL SYSTEM</span>
+          <h2>Gmail Sender</h2>
+          <p>One compact workspace for profiles, recipients and delivery.</p>
         </div>
 
         <button
           className="secondary-btn"
-          onClick={() => setShowCreateCampaign(false)}
+          onClick={resetCampaignForm}
         >
-          <X size={17} />
-          Close
+          <Plus size={16} />
+          New
         </button>
+      </section>
+
+      <section className="compact-send-panel">
+        <div className="compact-row-number">1</div>
+
+        <div className="compact-profile-cell">
+          <span className={`compact-status-dot ${compactStatus.toLowerCase()}`} />
+          <div>
+            <strong>{selectedProfile?.name || 'No Chrome profile'}</strong>
+            <span>{compactStatus.toLowerCase()}</span>
+          </div>
+          <select
+            className="compact-profile-select"
+            value={selectedProfileIds[0] || ''}
+            onChange={(event) =>
+              setSelectedProfileIds(event.target.value ? [event.target.value] : [])
+            }
+            aria-label="Chrome profile"
+          >
+            <option value="">Choose profile</option>
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.name}
+              </option>
+            ))}
+          </select>
+          {selectedProfile && (
+            <div className="compact-profile-actions">
+              <button type="button" onClick={() => openProfile(selectedProfile)}>
+                Open
+              </button>
+              <button type="button" onClick={() => toggleStart(selectedProfile)}>
+                {selectedProfile.running ? 'Stop' : 'Start'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="compact-message-cell">
+          <span className="compact-recipient-label">
+            {selectedProfile?.name || 'recipient account'}
+          </span>
+          <input
+            className="compact-subject-input"
+            value={subject}
+            onChange={(event) => setSubject(event.target.value)}
+            placeholder="Subject Line"
+          />
+          <textarea
+            className="compact-body-input"
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            placeholder="Body HTML or plain text"
+            spellCheck="false"
+          />
+        </div>
+
+        <div className="compact-progress-cell">
+          <span>Sent / Total</span>
+          <strong>
+            {liveSent} <small>/ {liveTotal}</small>
+          </strong>
+          <div className="compact-progress-track">
+            <span style={{ width: `${liveProgress}%` }} />
+          </div>
+          <small className="compact-failed">Failed: {liveFailed}</small>
+        </div>
+
+        <div className="compact-control-cell">
+          <div className="compact-csv-name">
+            <Upload size={13} />
+            <span>{csvFile?.name || 'No recipients.csv'}</span>
+          </div>
+          <small>{recipientCount} recipients</small>
+          {csvFile && (
+            <button
+              type="button"
+              className="compact-clear-recipients"
+              onClick={() => {
+                setCsvFile(null)
+                setCsvHeaders([])
+                setCsvRows([])
+                setRecipientCount(0)
+              }}
+            >
+              Clear recipients
+            </button>
+          )}
+          <button
+            type="button"
+            className="compact-send-button"
+            onClick={sendCurrentCampaign}
+          >
+            <Play size={14} />
+            Send
+          </button>
+        </div>
       </section>
 
       <section className="campaign-builder">
@@ -1874,6 +2019,12 @@ function App() {
           </div>
         </div>
       </section>
+    </div>
+  )
+
+  return (
+    <div className="app compact-campaign-mode">
+      <main className="main">{campaignComposer}</main>
     </div>
   )
 
