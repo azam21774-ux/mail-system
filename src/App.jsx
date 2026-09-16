@@ -1515,6 +1515,23 @@ function App() {
     void runCampaignOnProfile(campaign, profile)
   }
 
+  const stopCampaign = async (campaign) => {
+    if (!campaign?.id) return
+
+    const result = await window.electronAPI?.stopCampaign?.(campaign.id)
+    if (!result?.success) {
+      alert(result?.error || 'This campaign is not currently running.')
+      return
+    }
+
+    setCampaigns((previous) =>
+      previous.map((item) =>
+        item.id === campaign.id ? { ...item, status: 'Paused' } : item
+      )
+    )
+    addActivity('profile', 'Campaign paused', `${campaign.name} was stopped.`)
+  }
+
   const deleteCampaign = (campaign) => {
     const confirmed = window.confirm(
       `Delete "${campaign.name}"? This action cannot be undone.`
@@ -1627,6 +1644,7 @@ function App() {
   const compactStatus = liveCampaign?.status || (
     selectedProfile?.running ? 'Running' : 'Ready'
   )
+  const primaryCampaignRunning = liveCampaign?.status === 'Running'
 
   const campaignComposer = (
     <div className="content compact-campaign-shell">
@@ -1752,10 +1770,14 @@ function App() {
           <button
             type="button"
             className="compact-send-button"
-            onClick={sendCurrentCampaign}
+             onClick={() =>
+               primaryCampaignRunning
+                 ? stopCampaign(liveCampaign)
+                 : sendCurrentCampaign()
+             }
           >
-            <Play size={14} />
-            Send
+             {primaryCampaignRunning ? <Square size={13} /> : <Play size={14} />}
+             {primaryCampaignRunning ? 'Stop' : 'Send'}
           </button>
         </div>
       </section>
@@ -1855,15 +1877,22 @@ function App() {
             <button
               type="button"
               className="compact-send-button"
-              onClick={() => sendSenderRow(row)}
+              onClick={() =>
+                rowCampaign?.status === 'Running'
+                  ? stopCampaign(rowCampaign)
+                  : sendSenderRow(row)
+              }
               disabled={
                 row.status !== 'ready' ||
-                !row.recipientCount ||
-                rowCampaign?.status === 'Running'
+                !row.recipientCount
               }
             >
-              <Play size={14} />
-              {rowCampaign?.status === 'Running' ? 'Sending' : 'Send'}
+              {rowCampaign?.status === 'Running' ? (
+                <Square size={13} />
+              ) : (
+                <Play size={14} />
+              )}
+              {rowCampaign?.status === 'Running' ? 'Stop' : 'Send'}
             </button>
           </div>
         </section>
