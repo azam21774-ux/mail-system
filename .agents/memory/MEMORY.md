@@ -4,3 +4,4 @@
 - [XLSX floating image rendering](xlsx-floating-image-rendering.md) — crop to HTML layout bounds and use an absolute Excel anchor for movable image attachments.
 - [Windows Electron packaging](windows-electron-packaging.md) — build native dependencies and NSIS installers on a Windows runner, not by cross-packaging from Linux.
 - [Mail System licensing](license-architecture.md) — keep admin/license server code outside Electron builds; packaged clients only use the remote activation API.
+- [GitHub push authentication](github-push-authentication.md) — when gh is authenticated but HTTPS push rejects credentials, run gh auth setup-git before retrying.
