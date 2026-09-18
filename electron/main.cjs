@@ -136,6 +136,16 @@ function getChromePath() {
   return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || null
 }
 
+// UI Sending drives Gmail through its live page. These flags prevent Chrome
+// from throttling timers/rendering when a profile is in a background tab,
+// behind another window, or minimized.
+const backgroundAutomationChromeArgs = [
+  '--disable-background-timer-throttling',
+  '--disable-backgrounding-occluded-windows',
+  '--disable-renderer-backgrounding',
+  '--disable-features=CalculateNativeWinOcclusion',
+]
+
 function openOAuthInChrome(authorizationUrl, profileKey = 'api-main') {
   return new Promise((resolve, reject) => {
     const chromePath = getChromePath()
@@ -2507,6 +2517,7 @@ ipcMain.handle('open-chrome-profile', async (_event, profileId, port) => {
       '--no-first-run',
       '--no-default-browser-check',
       '--new-window',
+      ...backgroundAutomationChromeArgs,
       'https://mail.google.com/mail/u/0/#inbox',
     ]
 
