@@ -31,4 +31,5 @@ jobs:
         with:
           name: mail-system-macos-installer
           path: release/*.dmg
+          retention-days: 3
           if-no-files-found: error

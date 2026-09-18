@@ -31,4 +31,5 @@ jobs:
         with:
           name: mail-system-windows-installer
           path: release/*.exe
+          retention-days: 3
           if-no-files-found: error
