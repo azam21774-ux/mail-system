@@ -1365,9 +1365,25 @@ async function connectToGmail(port) {
     '[gh="cm"], [aria-label="Compose"], [role="button"][aria-label="Compose"]',
     { visible: true, timeout: 30000 }
   )
+  await keepGmailPageActive(page)
   await dismissGmailNotificationSnackbar(page)
 
   return { browser, page }
+}
+
+async function keepGmailPageActive(page) {
+  let session
+
+  try {
+    session = await page.createCDPSession()
+    await session.send('Page.setWebLifecycleState', { state: 'active' })
+    await session.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+  } catch {
+    // Older Chrome versions may not expose one of these CDP commands. The
+    // background-safe launch flags still protect those profiles.
+  } finally {
+    await session?.detach().catch(() => {})
+  }
 }
 
 async function checkChromeProfile(port) {
@@ -1779,6 +1795,7 @@ async function sendOneEmail(
   attachmentPath,
   templateContext = createTemplateContext(row)
 ) {
+  await keepGmailPageActive(page)
   const email = getRecipientValue(row, 'email')
 
   if (!email) {
@@ -1871,6 +1888,7 @@ async function sendOneEmail(
 
   // Gmail can show a desktop-notification snackbar across the compose
   // toolbar. Dismiss it immediately before locating and clicking Send.
+  await keepGmailPageActive(page)
   await dismissGmailNotificationSnackbar(page)
   const clickedSendButton = await clickGmailSend(page)
 
