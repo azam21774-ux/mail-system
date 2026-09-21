@@ -1488,7 +1488,7 @@ async function waitForAttachmentUpload(page) {
   )
 }
 
-async function dismissGmailNotificationSnackbar(page, timeout = 3000) {
+async function dismissGmailNotificationSnackbar(page, timeout = 150) {
   const deadline = Date.now() + timeout
 
   while (Date.now() < deadline) {
@@ -1555,7 +1555,7 @@ async function dismissGmailNotificationSnackbar(page, timeout = 3000) {
       .catch(() => false)
 
     if (dismissed) return true
-    await wait(150)
+    await wait(Math.min(50, Math.max(deadline - Date.now(), 0)))
   }
 
   return false
