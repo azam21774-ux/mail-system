@@ -3416,23 +3416,31 @@ nav {
 }
 
 .compact-clear-recipients {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   align-self: end;
-  border: 0;
-  padding: 1px 0;
-  background: transparent;
-  color: #e16161;
+  border: 1px solid rgba(225, 97, 97, 0.42);
+  border-radius: 4px;
+  padding: 4px 6px;
+  background: rgba(225, 97, 97, 0.06);
+  color: #f08080;
   cursor: pointer;
   font-size: 9px;
 }
 
 .compact-clear-recipients:hover {
+  border-color: rgba(255, 138, 138, 0.7);
+  background: rgba(225, 97, 97, 0.12);
   color: #ff8a8a;
 }
 
 .compact-clear-recipients:disabled {
-  color: #48515b;
+  border-color: #303944;
+  background: #11161c;
+  color: #81909f;
   cursor: not-allowed;
-  opacity: 0.7;
+  opacity: 1;
 }
 
 .compact-send-button {
