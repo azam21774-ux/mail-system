@@ -1,8 +1,14 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  openChromeProfile: (profileId, port, launchId) =>
-    ipcRenderer.invoke('open-chrome-profile', profileId, port, launchId),
+  openChromeProfile: (profileId, port, launchId, freshProfile) =>
+    ipcRenderer.invoke(
+      'open-chrome-profile',
+      profileId,
+      port,
+      launchId,
+      freshProfile
+    ),
 
   checkChromeProfile: (port) =>
     ipcRenderer.invoke('check-chrome-profile', port),

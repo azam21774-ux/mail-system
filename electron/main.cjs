@@ -2554,77 +2554,81 @@ ipcMain.handle('convert-png-to-heic', async (_event, payload) => {
 
 ipcMain.handle(
   'open-chrome-profile',
-  async (_event, profileId, port, launchId = '') => {
-  try {
-    const chromePath = getChromePath()
-    if (!chromePath) {
-      throw new Error('Google Chrome not found.')
+  async (_event, profileId, port, launchId = '', freshProfile = false) => {
+    try {
+      const chromePath = getChromePath()
+      if (!chromePath) {
+        throw new Error('Google Chrome not found.')
+      }
+
+      fs.mkdirSync(profilesRoot, { recursive: true })
+
+      // A newly added sender must never inherit an old Gmail login. Existing
+      // profiles keep their stable folder so their authenticated session is
+      // preserved, while New gets a unique empty Chrome data directory.
+      const safeLaunchId =
+        String(launchId)
+          .replace(/[^a-zA-Z0-9_-]/g, '-')
+          .slice(0, 80) || randomId().toLowerCase()
+      const profileFolder = freshProfile
+        ? `profile-${String(profileId)}-session-${safeLaunchId}`
+        : `profile-${String(profileId)}`
+      const profileDir = path.join(profilesRoot, profileFolder)
+
+      fs.mkdirSync(profileDir, { recursive: true })
+
+      // Unique debugging port for each profile.
+      const debugPort = Number(port) || 9222
+      const gmailUrl = `https://mail.google.com/mail/u/0/?mail_system_window=${encodeURIComponent(
+        safeLaunchId
+      )}#inbox`
+
+      const chromeArgs = [
+        `--user-data-dir=${profileDir}`,
+        `--remote-debugging-port=${debugPort}`,
+        '--no-first-run',
+        '--no-default-browser-check',
+        // Always request a separate top-level Chrome window. Chrome may reuse
+        // its existing process for a stable profile, but a fresh sender uses
+        // its own data directory and cannot reuse the old Gmail session.
+        '--new-window',
+        ...backgroundAutomationChromeArgs,
+        gmailUrl,
+      ]
+
+      // macOS can route a direct Chrome executable launch into the already
+      // running instance. `open -na` forces a new Chrome app instance so each
+      // isolated user-data-dir stays attached to its own sender profile.
+      const macLauncher = '/usr/bin/open'
+      const useMacLauncher =
+        process.platform === 'darwin' && fs.existsSync(macLauncher)
+      const launchCommand = useMacLauncher ? macLauncher : chromePath
+      const launchArgs = useMacLauncher
+        ? ['-na', '/Applications/Google Chrome.app', '--args', ...chromeArgs]
+        : chromeArgs
+
+      const chrome = spawn(launchCommand, launchArgs, {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: process.platform === 'win32',
+      })
+
+      chrome.unref()
+
+      return {
+        success: true,
+        profileId,
+        port: debugPort,
+        freshProfile: Boolean(freshProfile),
+      }
+    } catch (error) {
+      console.error('[Chrome] Launch failed:', error)
+
+      return {
+        success: false,
+        error: error.message,
+      }
     }
-
-    fs.mkdirSync(profilesRoot, { recursive: true })
-
-    const profileDir = path.join(
-      profilesRoot,
-      `profile-${String(profileId)}`
-    )
-
-    fs.mkdirSync(profileDir, { recursive: true })
-
-    // Unique debugging port for each profile.
-    const debugPort = Number(port) || 9222
-    const safeLaunchId =
-      String(launchId)
-        .replace(/[^a-zA-Z0-9_-]/g, '-')
-        .slice(0, 80) || randomId().toLowerCase()
-    const gmailUrl = `https://mail.google.com/mail/u/0/?mail_system_window=${encodeURIComponent(
-      safeLaunchId
-    )}#inbox`
-
-    const chromeArgs = [
-      `--user-data-dir=${profileDir}`,
-      `--remote-debugging-port=${debugPort}`,
-      '--no-first-run',
-      '--no-default-browser-check',
-      // Always request a separate top-level Chrome window. Chrome may reuse
-      // its existing process for the same profile directory, but it must not
-      // reuse the previously focused Gmail window.
-      '--new-window',
-      ...backgroundAutomationChromeArgs,
-      gmailUrl,
-    ]
-
-    // macOS can route a direct Chrome executable launch into the already
-    // running instance. `open -na` forces a new Chrome app instance so each
-    // isolated user-data-dir stays attached to its own sender profile.
-    const macLauncher = '/usr/bin/open'
-    const useMacLauncher =
-      process.platform === 'darwin' && fs.existsSync(macLauncher)
-    const launchCommand = useMacLauncher ? macLauncher : chromePath
-    const launchArgs = useMacLauncher
-      ? ['-na', '/Applications/Google Chrome.app', '--args', ...chromeArgs]
-      : chromeArgs
-
-    const chrome = spawn(launchCommand, launchArgs, {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: process.platform === 'win32',
-    })
-
-    chrome.unref()
-
-    return {
-      success: true,
-      profileId,
-      port: debugPort,
-    }
-  } catch (error) {
-    console.error('[Chrome] Launch failed:', error)
-
-    return {
-      success: false,
-      error: error.message,
-    }
-  }
   }
 )
 

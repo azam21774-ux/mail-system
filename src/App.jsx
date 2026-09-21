@@ -1836,7 +1836,7 @@ function MailSystemApp({
     return () => unsubscribe?.()
   }, [])
 
-  const openProfile = async (profile) => {
+  const openProfile = async (profile, { freshProfile = false } = {}) => {
     const launchId =
       window.crypto?.randomUUID?.() ||
       `${profile.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -1857,7 +1857,8 @@ function MailSystemApp({
       const result = await window.electronAPI.openChromeProfile(
         profile.id,
         profile.debugPort || 9222,
-        launchId
+        launchId,
+        freshProfile
       )
 
       if (!result.success) {
@@ -1916,7 +1917,7 @@ function MailSystemApp({
       setSenderRows((previous) =>
         previous.filter((row) => !row.profileId)
       )
-      void openProfile(newProfile)
+      void openProfile(newProfile, { freshProfile: true })
       addActivity(
         'profile',
         'Chrome Profile 1 added',
@@ -1944,7 +1945,7 @@ function MailSystemApp({
         campaignId: null,
       },
     ])
-    void openProfile(newProfile)
+    void openProfile(newProfile, { freshProfile: true })
     addActivity(
       'profile',
       'New sender row added',
