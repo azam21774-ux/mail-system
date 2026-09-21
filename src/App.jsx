@@ -1836,7 +1836,7 @@ function MailSystemApp({
     return () => unsubscribe?.()
   }, [])
 
-  const openProfile = async (profile, { freshProfile = false } = {}) => {
+  const openProfile = async (profile, { freshProfile = true } = {}) => {
     const launchId =
       window.crypto?.randomUUID?.() ||
       `${profile.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -1862,7 +1862,15 @@ function MailSystemApp({
       )
 
       if (!result.success) {
+        setProfiles((prev) =>
+          prev.map((item) =>
+            item.id === profile.id
+              ? { ...item, status: 'offline', lastActive: profile.lastActive }
+              : item
+          )
+        )
         alert(result.error)
+        return
       }
     }
 

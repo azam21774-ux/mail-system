@@ -2563,9 +2563,9 @@ ipcMain.handle(
 
       fs.mkdirSync(profilesRoot, { recursive: true })
 
-      // A newly added sender must never inherit an old Gmail login. Existing
-      // profiles keep their stable folder so their authenticated session is
-      // preserved, while New gets a unique empty Chrome data directory.
+      // Every panel Open creates a new isolated Chrome data directory. This
+      // intentionally discards the previous profile's cookies so the user
+      // gets a fresh Gmail login each time.
       const safeLaunchId =
         String(launchId)
           .replace(/[^a-zA-Z0-9_-]/g, '-')
@@ -2579,6 +2579,23 @@ ipcMain.handle(
 
       // Unique debugging port for each profile.
       const debugPort = Number(port) || 9222
+      try {
+        const existingChrome = await fetch(
+          `http://127.0.0.1:${debugPort}/json/version`,
+          { signal: AbortSignal.timeout(800) }
+        )
+        if (existingChrome.ok) {
+          throw new Error(
+            'Close the currently open Chrome profile before opening a fresh one.'
+          )
+        }
+      } catch (error) {
+        if (/Close the currently open Chrome profile/.test(error.message)) {
+          throw error
+        }
+        // No browser is listening on this profile's debugging port.
+      }
+
       const gmailUrl = `https://mail.google.com/mail/u/0/?mail_system_window=${encodeURIComponent(
         safeLaunchId
       )}#inbox`
@@ -2588,9 +2605,8 @@ ipcMain.handle(
         `--remote-debugging-port=${debugPort}`,
         '--no-first-run',
         '--no-default-browser-check',
-        // Always request a separate top-level Chrome window. Chrome may reuse
-        // its existing process for a stable profile, but a fresh sender uses
-        // its own data directory and cannot reuse the old Gmail session.
+        // Always request a separate top-level Chrome window. The unique data
+        // directory above prevents Chrome from reusing an old Gmail session.
         '--new-window',
         ...backgroundAutomationChromeArgs,
         gmailUrl,
