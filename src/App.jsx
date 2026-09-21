@@ -812,6 +812,7 @@ function MailSystemApp({
   const [delaySeconds, setDelaySeconds] = useState(0)
   const [typingDelayMs, setTypingDelayMs] = useState(0)
   const activeCampaignRuns = useRef(new Set())
+  const chromeHealthCheckInFlight = useRef(false)
   const campaignsRef = useRef([])
   const [activityLog, setActivityLog] = useState([
     {
@@ -1660,10 +1661,30 @@ function MailSystemApp({
     let cancelled = false
 
     const checkRows = async () => {
-      const results = await Promise.all(
-        senderRowsRef.current
-          .filter((row) => row.profileId !== undefined)
-          .map(async (row) => {
+      if (cancelled || chromeHealthCheckInFlight.current) return
+
+      const rowsToCheck = senderRowsRef.current.filter((row) => {
+        if (row.profileId === undefined) return false
+
+        const profile = profiles.find((item) => item.id === row.profileId)
+        if (!profile) return true
+
+        // Do not attach another Puppeteer connection to a page while its
+        // campaign is sending. The main process also guards this, but
+        // skipping the request here avoids unnecessary work for 4–5 profiles.
+        const campaign = campaignsRef.current.find(
+          (item) => item.id === row.campaignId
+        )
+        return !profile.running && campaign?.status !== 'Running'
+      })
+
+      if (!rowsToCheck.length) return
+
+      chromeHealthCheckInFlight.current = true
+
+      try {
+        const results = await Promise.all(
+          rowsToCheck.map(async (row) => {
             const profile = profiles.find((item) => item.id === row.profileId)
             if (!profile) return { rowId: row.id, ready: false }
 
@@ -1676,32 +1697,35 @@ function MailSystemApp({
               ready: Boolean(result?.ready),
             }
           })
-      )
+        )
 
-      if (cancelled) return
+        if (cancelled) return
 
-      setSenderRows((previous) =>
-        previous.map((row) => {
-          const result = results.find((item) => item.rowId === row.id)
-          if (!result) return row
+        setSenderRows((previous) =>
+          previous.map((row) => {
+            const result = results.find((item) => item.rowId === row.id)
+            if (!result) return row
 
-          const profile = profiles.find((item) => item.id === row.profileId)
-          const ready = result.ready
+            const profile = profiles.find((item) => item.id === row.profileId)
+            const ready = result.ready
 
-          return {
-            ...row,
-            status: ready ? 'ready' : 'waiting',
-            profileName:
-              profile?.name ||
-              row.profileName ||
-              `Chrome Profile ${row.profileId}`,
-          }
-        })
-      )
+            return {
+              ...row,
+              status: ready ? 'ready' : 'waiting',
+              profileName:
+                profile?.name ||
+                row.profileName ||
+                `Chrome Profile ${row.profileId}`,
+            }
+          })
+        )
+      } finally {
+        chromeHealthCheckInFlight.current = false
+      }
     }
 
     void checkRows()
-    const intervalId = window.setInterval(checkRows, 2000)
+    const intervalId = window.setInterval(checkRows, 4000)
 
     return () => {
       cancelled = true
@@ -1813,6 +1837,10 @@ function MailSystemApp({
   }, [])
 
   const openProfile = async (profile) => {
+    const launchId =
+      window.crypto?.randomUUID?.() ||
+      `${profile.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+
     setProfiles((prev) =>
       prev.map((p) =>
         p.id === profile.id
@@ -1828,7 +1856,8 @@ function MailSystemApp({
     if (window.electronAPI?.openChromeProfile) {
       const result = await window.electronAPI.openChromeProfile(
         profile.id,
-        profile.debugPort || 9222
+        profile.debugPort || 9222,
+        launchId
       )
 
       if (!result.success) {

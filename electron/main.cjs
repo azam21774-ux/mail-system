@@ -18,6 +18,8 @@ const licenseSessionFile = path.join(app.getPath('userData'), 'license-session.j
 const gmailOAuthScope =
   'openid email https://www.googleapis.com/auth/gmail.send'
 const campaignJobs = new Map()
+const activeUiProfilePorts = new Set()
+const chromeProfileChecks = new Map()
 
 let mainWindow
 
@@ -1386,7 +1388,7 @@ async function keepGmailPageActive(page) {
   }
 }
 
-async function checkChromeProfile(port) {
+async function checkChromeProfileInternal(port) {
   let browser
 
   try {
@@ -1451,6 +1453,36 @@ async function checkChromeProfile(port) {
     }
   } finally {
     browser?.disconnect()
+  }
+}
+
+async function checkChromeProfile(port) {
+  const debugPort = Number(port) || 9222
+
+  // A health probe must never attach to a Gmail page that is actively
+  // composing and sending. Even a read-only CDP connection can race with
+  // Gmail's DOM updates and make a four-to-five profile batch appear stuck.
+  if (activeUiProfilePorts.has(debugPort)) {
+    return {
+      success: true,
+      ready: true,
+      busy: true,
+      reason: 'Chrome profile is currently sending.',
+    }
+  }
+
+  const existingCheck = chromeProfileChecks.get(debugPort)
+  if (existingCheck) return existingCheck
+
+  const checkPromise = checkChromeProfileInternal(debugPort)
+  chromeProfileChecks.set(debugPort, checkPromise)
+
+  try {
+    return await checkPromise
+  } finally {
+    if (chromeProfileChecks.get(debugPort) === checkPromise) {
+      chromeProfileChecks.delete(debugPort)
+    }
   }
 }
 
@@ -2078,6 +2110,7 @@ ipcMain.handle('check-chrome-profile', async (_event, port) => {
 
 ipcMain.handle('run-campaign', async (_event, payload) => {
   const campaignId = String(payload?.campaignId || '')
+  const debugPort = Number(payload?.port) || 9222
   const job = {
     cancelled: false,
   }
@@ -2090,7 +2123,15 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
     return { success: false, error: 'This campaign is already running.' }
   }
 
+  if (activeUiProfilePorts.has(debugPort)) {
+    return {
+      success: false,
+      error: 'This Chrome profile is already sending another campaign.',
+    }
+  }
+
   campaignJobs.set(campaignId, job)
+  activeUiProfilePorts.add(debugPort)
 
   let browser
   let attachmentPath
@@ -2240,6 +2281,7 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
     return { success: false, error: error.message, sent, failed }
   } finally {
     campaignJobs.delete(campaignId)
+    activeUiProfilePorts.delete(debugPort)
     if (browser) browser.disconnect()
     if (attachmentPath && fs.existsSync(attachmentPath)) {
       fs.unlinkSync(attachmentPath)
@@ -2510,7 +2552,9 @@ ipcMain.handle('convert-png-to-heic', async (_event, payload) => {
   }
 })
 
-ipcMain.handle('open-chrome-profile', async (_event, profileId, port) => {
+ipcMain.handle(
+  'open-chrome-profile',
+  async (_event, profileId, port, launchId = '') => {
   try {
     const chromePath = getChromePath()
     if (!chromePath) {
@@ -2528,15 +2572,25 @@ ipcMain.handle('open-chrome-profile', async (_event, profileId, port) => {
 
     // Unique debugging port for each profile.
     const debugPort = Number(port) || 9222
+    const safeLaunchId =
+      String(launchId)
+        .replace(/[^a-zA-Z0-9_-]/g, '-')
+        .slice(0, 80) || randomId().toLowerCase()
+    const gmailUrl = `https://mail.google.com/mail/u/0/?mail_system_window=${encodeURIComponent(
+      safeLaunchId
+    )}#inbox`
 
     const chromeArgs = [
       `--user-data-dir=${profileDir}`,
       `--remote-debugging-port=${debugPort}`,
       '--no-first-run',
       '--no-default-browser-check',
+      // Always request a separate top-level Chrome window. Chrome may reuse
+      // its existing process for the same profile directory, but it must not
+      // reuse the previously focused Gmail window.
       '--new-window',
       ...backgroundAutomationChromeArgs,
-      'https://mail.google.com/mail/u/0/#inbox',
+      gmailUrl,
     ]
 
     // macOS can route a direct Chrome executable launch into the already
@@ -2571,7 +2625,8 @@ ipcMain.handle('open-chrome-profile', async (_event, profileId, port) => {
       error: error.message,
     }
   }
-})
+  }
+)
 
 app.whenReady().then(() => {
   createWindow()
