@@ -3240,6 +3240,15 @@ nav {
   color: #fff;
 }
 
+.compact-profile-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.compact-row-profile-actions {
+  align-items: center;
+}
+
 .compact-delete-profile {
   display: inline-grid;
   place-items: center;
@@ -3418,6 +3427,12 @@ nav {
 
 .compact-clear-recipients:hover {
   color: #ff8a8a;
+}
+
+.compact-clear-recipients:disabled {
+  color: #48515b;
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .compact-send-button {

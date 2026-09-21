@@ -1661,19 +1661,21 @@ function MailSystemApp({
 
     const checkRows = async () => {
       const results = await Promise.all(
-        senderRowsRef.current.map(async (row) => {
-          const profile = profiles.find((item) => item.id === row.profileId)
-          if (!profile) return { rowId: row.id, ready: false }
+        senderRowsRef.current
+          .filter((row) => row.profileId !== undefined)
+          .map(async (row) => {
+            const profile = profiles.find((item) => item.id === row.profileId)
+            if (!profile) return { rowId: row.id, ready: false }
 
-          const result = await window.electronAPI.checkChromeProfile(
-            profile.debugPort || 9222
-          )
+            const result = await window.electronAPI.checkChromeProfile(
+              profile.debugPort || 9222
+            )
 
-          return {
-            rowId: row.id,
-            ready: Boolean(result?.ready),
-          }
-        })
+            return {
+              rowId: row.id,
+              ready: Boolean(result?.ready),
+            }
+          })
       )
 
       if (cancelled) return
@@ -1689,9 +1691,10 @@ function MailSystemApp({
           return {
             ...row,
             status: ready ? 'ready' : 'waiting',
-            profileName: ready
-              ? profile?.name || `Chrome Profile ${row.profileId}`
-              : 'Waiting for Gmail account',
+            profileName:
+              profile?.name ||
+              row.profileName ||
+              `Chrome Profile ${row.profileId}`,
           }
         })
       )
@@ -1926,6 +1929,83 @@ function MailSystemApp({
         row.id === rowId ? { ...row, [field]: value } : row
       )
     )
+  }
+
+  const resetCampaignRecipientData = (campaign) => ({
+    ...campaign,
+    csvFile: null,
+    csvName: null,
+    csvHeaders: [],
+    recipientRows: [],
+    recipients: 0,
+    sent: 0,
+    failed: 0,
+    nextRecipientIndex: 0,
+    lastRecipient: null,
+    lastError: null,
+    startedAt: null,
+    status: 'Draft',
+    updatedAt: new Date().toLocaleString(),
+  })
+
+  const clearPrimaryRecipients = () => {
+    const campaign = editingCampaignId
+      ? campaigns.find((item) => item.id === editingCampaignId)
+      : null
+
+    if (campaign?.status === 'Running') {
+      alert('Stop sending before clearing recipients.')
+      return
+    }
+
+    setCsvFile(null)
+    setCsvHeaders([])
+    setCsvRows([])
+    setRecipientCount(0)
+
+    if (campaign) {
+      updateSendingModeCampaigns(activeSendingModeRef.current, (previous) =>
+        previous.map((item) =>
+          item.id === campaign.id ? resetCampaignRecipientData(item) : item
+        )
+      )
+    }
+  }
+
+  const clearSenderRowRecipients = (row) => {
+    const rowCampaign = row.campaignId
+      ? campaigns.find((campaign) => campaign.id === row.campaignId)
+      : null
+
+    if (rowCampaign?.status === 'Running') {
+      alert('Stop sending before clearing recipients.')
+      return
+    }
+
+    setSenderRows((previous) =>
+      previous.map((item) =>
+        item.id === row.id
+          ? {
+              ...item,
+              csvFile: null,
+              csvHeaders: [],
+              csvRows: [],
+              recipientCount: 0,
+              campaignId: null,
+            }
+          : item
+      )
+    )
+
+    if (rowCampaign) {
+      updateSendingModeCampaigns(activeSendingModeRef.current, (previous) =>
+        previous.map((item) =>
+          item.id === rowCampaign.id
+            ? resetCampaignRecipientData(item)
+            : item
+        )
+      )
+    }
   }
 
   const deleteSenderRow = (row) => {
@@ -2720,20 +2800,19 @@ function MailSystemApp({
             />
           </label>
           <small>{recipientCount} recipients</small>
-          {csvFile && (
-            <button
-              type="button"
-              className="compact-clear-recipients"
-              onClick={() => {
-                setCsvFile(null)
-                setCsvHeaders([])
-                setCsvRows([])
-                setRecipientCount(0)
-              }}
-            >
-              Clear recipients
-            </button>
-          )}
+          <button
+            type="button"
+            className="compact-clear-recipients"
+            onClick={clearPrimaryRecipients}
+            disabled={!csvFile && !csvRows.length}
+            title={
+              csvFile || csvRows.length
+                ? 'Clear the current recipient list'
+                : 'No recipients loaded'
+            }
+          >
+            Clear recipients
+          </button>
           <button
             type="button"
             className="compact-send-button"
@@ -2776,6 +2855,9 @@ function MailSystemApp({
         const rowGmailAccount = gmailAccounts.find(
           (account) => account.id === row.gmailAccountId
         )
+        const rowProfile = isApiSending
+          ? null
+          : profiles.find((profile) => profile.id === row.profileId)
 
         return (
         <section className="compact-send-panel compact-sender-row" key={row.id}>
@@ -2812,20 +2894,34 @@ function MailSystemApp({
                 <Trash2 size={13} />
               </button>
             ) : (
-              <button
-                type="button"
-                className="compact-delete-profile compact-row-delete"
-                onClick={() => {
-                  const profile = profiles.find(
-                    (item) => item.id === row.profileId
-                  )
-                  if (profile) deleteProfile(profile)
-                }}
-                aria-label={`Delete Chrome Profile ${row.profileId}`}
-                title="Delete profile"
-              >
-                <Trash2 size={13} />
-              </button>
+              <div className="compact-profile-actions compact-row-profile-actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (rowProfile) void openProfile(rowProfile)
+                  }}
+                  disabled={!rowProfile}
+                  title={
+                    rowProfile
+                      ? `Open ${rowProfile.name}`
+                      : 'Chrome profile is unavailable'
+                  }
+                >
+                  Open
+                </button>
+                <button
+                  type="button"
+                  className="compact-delete-profile compact-row-delete"
+                  onClick={() => {
+                    if (rowProfile) deleteProfile(rowProfile)
+                  }}
+                  disabled={!rowProfile}
+                  aria-label={`Delete Chrome Profile ${row.profileId}`}
+                  title="Delete profile"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
             )}
             {isApiSending && (
               <div className="compact-api-account-actions compact-row-api-actions">
@@ -2984,6 +3080,19 @@ function MailSystemApp({
               {row.recipientCount || 0} recipients
               {row.status !== 'ready' ? ' · Waiting for Gmail account' : ''}
             </small>
+            <button
+              type="button"
+              className="compact-clear-recipients"
+              onClick={() => clearSenderRowRecipients(row)}
+              disabled={!row.csvFile && !row.csvRows?.length}
+              title={
+                row.csvFile || row.csvRows?.length
+                  ? 'Clear the current recipient list'
+                  : 'No recipients loaded'
+              }
+            >
+              Clear recipients
+            </button>
             <button
               type="button"
               className="compact-send-button"
