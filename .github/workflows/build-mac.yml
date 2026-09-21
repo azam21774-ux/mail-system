@@ -1,4 +1,4 @@
-name: Build macOS installer
+name: Build macOS installer and portable app
 
 on:
   workflow_dispatch:
@@ -26,15 +26,41 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Prepare release assets
+        run: |
+          rm -rf release-assets
+          mkdir -p release-assets
+
       - name: Build macOS installer
         run: npm run package:mac
+
+      - name: Save macOS installer
+        run: |
+          installers=$(find release -maxdepth 1 -type f -name '*.dmg')
+          if [ -z "$installers" ]; then
+            echo "macOS installer was not found in release."
+            exit 1
+          fi
+          cp release/*.dmg release-assets/
+
+      - name: Build macOS portable app
+        run: npm run package:mac:zip
+
+      - name: Save macOS portable app
+        run: |
+          portable_apps=$(find release -maxdepth 1 -type f -name '*.zip')
+          if [ -z "$portable_apps" ]; then
+            echo "macOS portable app was not found in release."
+            exit 1
+          fi
+          cp release/*.zip release-assets/
 
       - name: Publish macOS installer release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: mail-system-macos-${{ github.sha }}
         run: |
-          gh release create "$RELEASE_TAG" release/*.dmg \
-            --title "Mail System macOS installer (${{ github.sha }})" \
-            --notes "macOS installer built from commit ${{ github.sha }}." \
+          gh release create "$RELEASE_TAG" release-assets/* \
+            --title "Mail System macOS builds (${{ github.sha }})" \
+            --notes "macOS installer and portable app built from commit ${{ github.sha }}." \
             --prerelease

@@ -11,8 +11,10 @@
     "build": "vite build",
     "start": "electron .",
     "package:mac": "npm run build && electron-builder --mac dmg --publish never",
+    "package:mac:zip": "npm run build && electron-builder --mac zip --publish never",
     "package:mac:dir": "npm run build && electron-builder --mac dir --publish never",
     "package:win": "npm run build && electron-builder --win nsis --publish never",
+    "package:win:portable": "npm run build && electron-builder --win portable --publish never",
     "package:win:dir": "npm run build && electron-builder --win dir --publish never"
   },
   "dependencies": {
