@@ -1349,9 +1349,10 @@ async function connectToGmail(port) {
     defaultViewport: null,
   })
   const pages = await browser.pages()
-  let page = pages.find((candidate) =>
+  const gmailPages = pages.filter((candidate) =>
     candidate.url().includes('mail.google.com')
   )
+  let page = gmailPages.at(-1)
 
   if (!page) {
     page = pages[0] || (await browser.newPage())
@@ -1486,38 +1487,275 @@ async function checkChromeProfile(port) {
   }
 }
 
-async function waitForAttachmentUpload(page) {
-  await page.waitForFunction(
-    () => {
+const composeAttachmentSelector =
+  '[aria-label*="Remove attachment" i], [data-tooltip*="Remove attachment" i], [title*="Remove attachment" i], .aYF'
+const composeUploadProgressSelector =
+  '[role="progressbar"], [aria-label*="Uploading" i], [aria-label*="uploading" i]'
+
+function ownedComposeSelector(token) {
+  return `[data-mail-system-compose="${token}"]`
+}
+
+async function openOwnedCompose(page, token) {
+  await page.evaluate((snapshotToken) => {
+    const roots = new Set(
+      Array.from(document.querySelectorAll('input[name="subjectbox"]'))
+        .map(
+          (subject) =>
+            subject.closest('[role="dialog"]') ||
+            subject.closest('.M9') ||
+            subject.closest('.AD')
+        )
+        .filter(Boolean)
+    )
+
+    for (const root of roots) {
+      root.setAttribute('data-mail-system-compose-snapshot', snapshotToken)
+    }
+  }, token)
+
+  try {
+    const composeButton = await page.waitForSelector(
+      '[gh="cm"], [aria-label="Compose"], [role="button"][aria-label="Compose"]',
+      { visible: true, timeout: 15000 }
+    )
+    await composeButton.click()
+
+    await page.waitForFunction(
+      (composeToken) => {
+        const visible = (element) => {
+          const style = window.getComputedStyle(element)
+          const rect = element.getBoundingClientRect()
+          return (
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            element.getAttribute('aria-hidden') !== 'true' &&
+            rect.width > 0 &&
+            rect.height > 0
+          )
+        }
+        const roots = new Set(
+          Array.from(document.querySelectorAll('input[name="subjectbox"]'))
+            .map(
+              (subject) =>
+                subject.closest('[role="dialog"]') ||
+                subject.closest('.M9') ||
+                subject.closest('.AD')
+            )
+            .filter(Boolean)
+        )
+        const newRoot = Array.from(roots).find(
+          (root) =>
+            visible(root) &&
+            root.getAttribute('data-mail-system-compose-snapshot') !==
+              composeToken
+        )
+
+        if (!newRoot) return false
+        newRoot.setAttribute('data-mail-system-compose', composeToken)
+        return true
+      },
+      { timeout: 15000 },
+      token
+    )
+
+    const compose = await page.$(ownedComposeSelector(token))
+    if (!compose) {
+      throw new Error('Gmail opened Compose, but it could not be isolated.')
+    }
+
+    return { token, compose }
+  } catch (error) {
+    // The root can appear just as the wait times out. Claim it before cleanup
+    // so sendOneEmail can still discard the draft instead of leaking it.
+    const claimed = await page
+      .evaluate((composeToken) => {
+        const visible = (element) => {
+          const style = window.getComputedStyle(element)
+          const rect = element.getBoundingClientRect()
+          return (
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            rect.width > 0 &&
+            rect.height > 0
+          )
+        }
+        const roots = new Set(
+          Array.from(document.querySelectorAll('input[name="subjectbox"]'))
+            .map(
+              (subject) =>
+                subject.closest('[role="dialog"]') ||
+                subject.closest('.M9') ||
+                subject.closest('.AD')
+            )
+            .filter(Boolean)
+        )
+        const unclaimedRoot = Array.from(roots).find(
+          (root) =>
+            visible(root) &&
+            root.getAttribute('data-mail-system-compose-snapshot') !==
+              composeToken
+        )
+        if (unclaimedRoot) {
+          unclaimedRoot.setAttribute('data-mail-system-compose', composeToken)
+          return true
+        }
+        return false
+      }, token)
+      .catch(() => false)
+    if (!claimed) {
+      throw stopCampaignError(
+        `${error.message} Gmail Compose ownership was uncertain, so this profile was stopped.`
+      )
+    }
+    throw error
+  } finally {
+    await page
+      .evaluate((snapshotToken) => {
+        for (const element of document.querySelectorAll(
+          '[data-mail-system-compose-snapshot]'
+        )) {
+          if (
+            element.getAttribute('data-mail-system-compose-snapshot') ===
+            snapshotToken
+          ) {
+            element.removeAttribute('data-mail-system-compose-snapshot')
+          }
+        }
+      }, token)
+      .catch(() => {})
+  }
+}
+
+async function waitForVisibleComposeSelector(
+  compose,
+  selector,
+  timeout = 15000
+) {
+  const deadline = Date.now() + timeout
+
+  while (Date.now() < deadline) {
+    const candidates = await compose.$$(selector).catch(() => [])
+
+    for (const candidate of candidates) {
+      const visible = await candidate
+        .evaluate((element) => {
+          const style = window.getComputedStyle(element)
+          const rect = element.getBoundingClientRect()
+          return (
+            element.isConnected &&
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            element.getAttribute('aria-hidden') !== 'true' &&
+            rect.width > 0 &&
+            rect.height > 0
+          )
+        })
+        .catch(() => false)
+
+      if (visible) return candidate
+      await candidate.dispose().catch(() => {})
+    }
+
+    await wait(150)
+  }
+
+  throw new Error('Gmail Compose did not show the required control.')
+}
+
+async function getOwnedAttachmentState(page, token) {
+  return page.evaluate(
+    (composeToken, attachmentSelector, progressSelector) => {
+      const root = document.querySelector(
+        `[data-mail-system-compose="${composeToken}"]`
+      )
+      if (!root || !root.isConnected) {
+        return { exists: false, attachments: 0, uploading: false }
+      }
+
       const visible = (element) => {
         const style = window.getComputedStyle(element)
+        const rect = element.getBoundingClientRect()
         return (
           style.display !== 'none' &&
           style.visibility !== 'hidden' &&
-          element.getBoundingClientRect().width > 0 &&
-          element.getBoundingClientRect().height > 0
+          element.getAttribute('aria-hidden') !== 'true' &&
+          rect.width > 0 &&
+          rect.height > 0
         )
       }
+      const attachmentRoots = new Set(
+        Array.from(root.querySelectorAll(attachmentSelector))
+          .filter(visible)
+          .map(
+            (control) =>
+              control.closest('.aZo, [data-attachment-id]') || control
+          )
+      )
 
-      const uploadStillRunning = Array.from(
-        document.querySelectorAll(
-          '[role="progressbar"], [aria-label*="Uploading" i], [aria-label*="uploading" i]'
-        )
-      ).some(visible)
-
-      // Gmail renders a remove-attachment control only after the attachment
-      // has been accepted into the compose window. This avoids depending on
-      // the visible filename, which can be truncated or localized.
-      const attachmentReady = Array.from(
-        document.querySelectorAll(
-          '[aria-label*="Remove attachment" i], [data-tooltip*="Remove attachment" i], [title*="Remove attachment" i], .aA6'
-        )
-      ).some(visible)
-
-      return attachmentReady && !uploadStillRunning
+      return {
+        exists: true,
+        attachments: attachmentRoots.size,
+        uploading: Array.from(root.querySelectorAll(progressSelector)).some(
+          visible
+        ),
+      }
     },
-    { timeout: 30000 }
+    token,
+    composeAttachmentSelector,
+    composeUploadProgressSelector
   )
+}
+
+async function waitForAttachmentUpload(page, token) {
+  await page.waitForFunction(
+    (composeToken, attachmentSelector, progressSelector) => {
+      const root = document.querySelector(
+        `[data-mail-system-compose="${composeToken}"]`
+      )
+      if (!root || !root.isConnected) return false
+
+      const visible = (element) => {
+        const style = window.getComputedStyle(element)
+        const rect = element.getBoundingClientRect()
+        return (
+          style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          element.getAttribute('aria-hidden') !== 'true' &&
+          rect.width > 0 &&
+          rect.height > 0
+        )
+      }
+      const attachments = Array.from(
+        root.querySelectorAll(attachmentSelector)
+      ).filter(visible)
+      const attachmentRoots = new Set(
+        attachments.map(
+          (control) =>
+            control.closest('.aZo, [data-attachment-id]') || control
+        )
+      )
+      const uploadStillRunning = Array.from(
+        root.querySelectorAll(progressSelector)
+      ).some(visible)
+
+      return attachmentRoots.size === 1 && !uploadStillRunning
+    },
+    { timeout: 45000 },
+    token,
+    composeAttachmentSelector,
+    composeUploadProgressSelector
+  )
+
+  // Gmail can briefly show one completed chip before a delayed duplicate is
+  // inserted. Require the owned compose to remain stable before continuing.
+  await wait(750)
+  const state = await getOwnedAttachmentState(page, token)
+  if (!state.exists || state.uploading || state.attachments !== 1) {
+    throw new Error(
+      `Gmail attachment upload was not stable (found ${state.attachments}).`
+    )
+  }
 }
 
 async function dismissGmailNotificationSnackbar(page, timeout = 150) {
@@ -1593,7 +1831,7 @@ async function dismissGmailNotificationSnackbar(page, timeout = 150) {
   return false
 }
 
-async function clickGmailSend(page, timeout = 10000) {
+async function clickGmailSend(compose, timeout = 10000) {
   const sendSelectors = [
     'div.T-I.J-J5-Ji.aoO.v7.T-I-atl.L3[role="button"][data-tooltip^="Send"]',
     'div.dC > div[role="button"].aoO[data-tooltip^="Send"]',
@@ -1610,7 +1848,7 @@ async function clickGmailSend(page, timeout = 10000) {
   const deadline = Date.now() + timeout
 
   while (Date.now() < deadline) {
-    const candidates = await page.$$(selector)
+    const candidates = await compose.$$(selector).catch(() => [])
 
     for (const button of candidates) {
       const ready = await button
@@ -1760,16 +1998,6 @@ async function confirmEmptyComposeIfVisible(page, timeout = 2500) {
   return false
 }
 
-async function pressSendShortcut(page) {
-  const modifier = process.platform === 'darwin' ? 'Meta' : 'Control'
-  await page.keyboard.down(modifier)
-  try {
-    await page.keyboard.press('Enter')
-  } finally {
-    await page.keyboard.up(modifier)
-  }
-}
-
 const gmailDialogHandlers = new WeakMap()
 
 function installGmailDialogHandler(page) {
@@ -1795,29 +2023,209 @@ function installGmailDialogHandler(page) {
   gmailDialogHandlers.set(page, handler)
 }
 
-async function waitForComposeClosed(page, timeout = 10000) {
+async function waitForComposeClosed(page, token, timeout = 15000) {
   return page
     .waitForFunction(
-      () => {
-        const subjectInput = document.querySelector(
-          'input[name="subjectbox"]'
+      (composeToken) => {
+        const root = document.querySelector(
+          `[data-mail-system-compose="${composeToken}"]`
         )
-        if (!subjectInput) return true
+        if (!root || !root.isConnected) return true
 
-        const style = window.getComputedStyle(subjectInput)
-        const rect = subjectInput.getBoundingClientRect()
+        const style = window.getComputedStyle(root)
+        const rect = root.getBoundingClientRect()
         return (
           style.display === 'none' ||
           style.visibility === 'hidden' ||
-          subjectInput.getAttribute('aria-hidden') === 'true' ||
+          root.getAttribute('aria-hidden') === 'true' ||
           rect.width === 0 ||
           rect.height === 0
         )
       },
-      { timeout }
+      { timeout },
+      token
     )
     .then(() => true)
     .catch(() => false)
+}
+
+async function isOwnedComposeOpen(page, token) {
+  return page
+    .evaluate((composeToken) => {
+      const root = document.querySelector(
+        `[data-mail-system-compose="${composeToken}"]`
+      )
+      if (!root || !root.isConnected) return false
+
+      const style = window.getComputedStyle(root)
+      const rect = root.getBoundingClientRect()
+      return (
+        style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        root.getAttribute('aria-hidden') !== 'true' &&
+        rect.width > 0 &&
+        rect.height > 0
+      )
+    }, token)
+    .catch(() => false)
+}
+
+async function discardOwnedCompose(page, token, timeout = 8000) {
+  if (!(await isOwnedComposeOpen(page, token))) return true
+
+  const compose = await page.$(ownedComposeSelector(token))
+  if (!compose) return true
+
+  try {
+    const discardButton = await waitForVisibleComposeSelector(
+      compose,
+      '[command="discard"], [aria-label*="Discard draft" i], [data-tooltip*="Discard draft" i], [title*="Discard draft" i]',
+      3000
+    )
+    await discardButton.click()
+    return waitForComposeClosed(page, token, timeout)
+  } catch {
+    return false
+  }
+}
+
+async function armSendOutcomeObserver(page, token) {
+  await page.evaluate((noticeToken) => {
+    window.__mailSystemSendOutcomes ||= {}
+    window.__mailSystemSendOutcomes[noticeToken]?.observer?.disconnect()
+
+    const selector = '[role="status"], [role="alert"], .vh'
+    const state = { result: null, observer: null }
+    const noticeBaselines = new Map()
+    const visible = (element) => {
+      const style = window.getComputedStyle(element)
+      const rect = element.getBoundingClientRect()
+      return (
+        style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        rect.width > 0 &&
+        rect.height > 0
+      )
+    }
+    const noticeSignature = (element) => {
+      const text = String(element.innerText || element.textContent || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+      return `${visible(element) ? 'visible' : 'hidden'}:${text}`
+    }
+    const classifyChangedNotice = (element) => {
+      if (!element) return null
+      const signature = noticeSignature(element)
+      const previousSignature = noticeBaselines.get(element)
+      noticeBaselines.set(element, signature)
+      if (previousSignature === signature || !visible(element)) return null
+
+      const text = String(element.innerText || element.textContent || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+      if (
+        /couldn['’]?t send|could not send|not sent|failed to send|error sending/i.test(
+          text
+        )
+      ) {
+        return 'error'
+      }
+      return /\bmessage sent\b/i.test(text) ? 'sent' : null
+    }
+    for (const existingNotice of document.querySelectorAll(selector)) {
+      noticeBaselines.set(existingNotice, noticeSignature(existingNotice))
+    }
+
+    const closestNotice = (node) => {
+      const element =
+        node?.nodeType === Node.ELEMENT_NODE
+          ? node
+          : node?.parentElement || null
+      if (!element) return null
+      return element.matches?.(selector)
+        ? element
+        : element.closest?.(selector) || null
+    }
+
+    const addedNotices = (node) => {
+      const element =
+        node?.nodeType === Node.ELEMENT_NODE
+          ? node
+          : node?.parentElement || null
+      if (!element) return []
+
+      return [
+        ...(element.matches?.(selector) ? [element] : []),
+        ...(element.querySelectorAll?.(selector) || []),
+      ]
+    }
+
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        const candidates = new Set()
+        const containingNotice = closestNotice(mutation.target)
+        if (containingNotice) candidates.add(containingNotice)
+
+        if (mutation.type === 'childList') {
+          for (const addedNode of mutation.addedNodes) {
+            for (const notice of addedNotices(addedNode)) {
+              candidates.add(notice)
+            }
+          }
+        }
+
+        for (const candidate of candidates) {
+          const result = classifyChangedNotice(candidate)
+          if (!result) continue
+          state.result = result
+          observer.disconnect()
+          return
+        }
+      }
+    })
+    state.observer = observer
+    window.__mailSystemSendOutcomes[noticeToken] = state
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['class', 'style', 'aria-hidden'],
+    })
+  }, token)
+}
+
+async function clearSendOutcomeObserver(page, token) {
+  await page
+    .evaluate((noticeToken) => {
+      const outcomes = window.__mailSystemSendOutcomes
+      outcomes?.[noticeToken]?.observer?.disconnect()
+      if (outcomes) delete outcomes[noticeToken]
+    }, token)
+    .catch(() => {})
+}
+
+async function waitForSendOutcome(page, token, timeout = 10000) {
+  try {
+    const handle = await page.waitForFunction(
+      (noticeToken) => {
+        return window.__mailSystemSendOutcomes?.[noticeToken]?.result || false
+      },
+      { timeout },
+      token
+    )
+    return handle.jsonValue()
+  } catch {
+    return 'unknown'
+  } finally {
+    await clearSendOutcomeObserver(page, token)
+  }
+}
+
+function stopCampaignError(message) {
+  const error = new Error(message)
+  error.stopCampaign = true
+  return error
 }
 
 async function sendOneEmail(
@@ -1844,112 +2252,150 @@ async function sendOneEmail(
   const needsEmptyComposeConfirmation =
     !expandedSubject.trim() || !bodyText
   const typingDelay = Math.max(Number(payload.typingDelayMs) || 0, 0)
-  const composeButton = await page.waitForSelector(
-    '[gh="cm"], [aria-label="Compose"], [role="button"][aria-label="Compose"]',
-    { visible: true, timeout: 15000 }
-  )
+  let compose
+  const composeToken = crypto.randomBytes(12).toString('hex')
+  let sendInitiated = false
+  let confirmedSent = false
 
-  await composeButton.click()
+  try {
+    const ownedCompose = await openOwnedCompose(page, composeToken)
+    compose = ownedCompose.compose
 
-  if (attachmentPath) {
-    // Prefer the hidden input when Gmail has already rendered it. If Gmail
-    // only creates it after the paperclip click, intercept the native chooser
-    // before clicking so macOS never shows a blocking file-picker window.
-    const fileInput = await page
-      .waitForSelector('input[type="file"]', { timeout: 3000 })
-      .catch(() => null)
-
-    if (fileInput) {
-      await fileInput.uploadFile(attachmentPath)
-    } else {
-      const attachmentButton = await page.waitForSelector(
-        '[command="Files"], [aria-label*="Attach"], .a1.aaA.aMZ',
-        { visible: true, timeout: 15000 }
+    if (attachmentPath) {
+      // Always open the chooser from this exact compose. Page-global hidden
+      // file inputs can belong to an older draft and cause duplicate uploads.
+      const attachmentButton = await waitForVisibleComposeSelector(
+        compose,
+        '[command="Files"], [aria-label*="Attach"], .a1.aaA.aMZ'
       )
       const [fileChooser] = await Promise.all([
-        page.waitForFileChooser(),
+        page.waitForFileChooser({ timeout: 15000 }),
         attachmentButton.click(),
       ])
       await fileChooser.accept([attachmentPath])
+
+      // Require exactly one stable attachment in the owned compose before
+      // entering any recipient data.
+      await waitForAttachmentUpload(page, composeToken)
     }
 
-    // Do not fill recipient, subject, or body until Gmail shows the
-    // attachment chip and no upload progress indicator remains.
-    await waitForAttachmentUpload(page)
-  }
+    const recipientInput = await waitForVisibleComposeSelector(
+      compose,
+      'input[aria-label="To recipients"], input[role="combobox"][aria-autocomplete="list"]'
+    )
+    await recipientInput.click()
+    await recipientInput.type(email, { delay: typingDelay })
+    await page.keyboard.press('Enter')
 
-  const recipientInput = await page.waitForSelector(
-    'input[aria-label="To recipients"], input[role="combobox"][aria-autocomplete="list"]',
-    { visible: true, timeout: 15000 }
-  )
-  await recipientInput.click()
-  await recipientInput.type(email, { delay: typingDelay })
-  await page.keyboard.press('Enter')
+    const subjectInput = await waitForVisibleComposeSelector(
+      compose,
+      'input[name="subjectbox"]'
+    )
+    await subjectInput.click()
+    await subjectInput.type(expandedSubject, { delay: typingDelay })
 
-  const subjectInput = await page.waitForSelector('input[name="subjectbox"]', {
-    visible: true,
-    timeout: 15000,
-  })
-  await subjectInput.click()
-  await subjectInput.type(expandedSubject, { delay: typingDelay })
+    const messageBody = await waitForVisibleComposeSelector(
+      compose,
+      '[aria-label="Message Body"][contenteditable="true"], div[role="textbox"][contenteditable="true"]'
+    )
+    await messageBody.click()
 
-  const messageBody = await page.waitForSelector(
-    '[aria-label="Message Body"][contenteditable="true"], div[role="textbox"][contenteditable="true"]',
-    { visible: true, timeout: 15000 }
-  )
-  await messageBody.click()
+    const useHtml = Boolean(payload.htmlMode || looksLikeHtml(body))
 
-  const useHtml = Boolean(payload.htmlMode || looksLikeHtml(body))
+    if (useHtml) {
+      await messageBody.evaluate((element, html) => {
+        element.focus()
+        element.innerHTML = html
+        element.dispatchEvent(
+          new InputEvent('input', {
+            bubbles: true,
+            inputType: 'insertHTML',
+            data: html,
+          })
+        )
+        element.dispatchEvent(new Event('change', { bubbles: true }))
+      }, body)
+    } else {
+      await messageBody.type(body, { delay: typingDelay })
+    }
 
-  if (useHtml) {
-    await messageBody.evaluate((element, html) => {
-      element.focus()
-      element.innerHTML = html
-      element.dispatchEvent(
-        new InputEvent('input', {
-          bubbles: true,
-          inputType: 'insertHTML',
-          data: html,
-        })
+    const attachmentState = await getOwnedAttachmentState(page, composeToken)
+    if (
+      !attachmentState.exists ||
+      attachmentState.uploading ||
+      attachmentState.attachments !== (attachmentPath ? 1 : 0)
+    ) {
+      throw new Error(
+        `Gmail Compose attachment check failed before Send (found ${attachmentState.attachments}).`
       )
-      element.dispatchEvent(new Event('change', { bubbles: true }))
-    }, body)
-  } else {
-    await messageBody.type(body, { delay: typingDelay })
-  }
-
-  // Gmail can show a desktop-notification snackbar across the compose
-  // toolbar. Dismiss it immediately before locating and clicking Send.
-  await keepGmailPageActive(page)
-  await dismissGmailNotificationSnackbar(page)
-  const clickedSendButton = await clickGmailSend(page)
-
-  if (!clickedSendButton) {
-    // Puppeteer requires modifier keys to be held separately; the platform
-    // modifier is selected by pressSendShortcut().
-    await pressSendShortcut(page)
-  }
-
-  if (needsEmptyComposeConfirmation) {
-    await confirmEmptyComposeIfVisible(page, 1000)
-  }
-
-  let sent = await waitForComposeClosed(page)
-
-  if (!sent && clickedSendButton) {
-    // The toolbar can be visible before Gmail is ready to accept the click.
-    await pressSendShortcut(page)
-    if (needsEmptyComposeConfirmation) {
-      await confirmEmptyComposeIfVisible(page, 1000)
     }
-    sent = await waitForComposeClosed(page)
-  }
 
-  if (!sent) {
-    throw new Error('Gmail did not close the compose window after Send.')
-  }
+    // Dismiss the unrelated notification prompt, arm a mutation observer for
+    // the next Gmail send result, and click Send exactly once in this compose.
+    await keepGmailPageActive(page)
+    await dismissGmailNotificationSnackbar(page)
+    await armSendOutcomeObserver(page, composeToken)
+    const clickedSendButton = await clickGmailSend(compose)
 
-  await wait(800)
+    if (!clickedSendButton) {
+      throw new Error('Gmail did not expose Send in the current compose.')
+    }
+    sendInitiated = true
+
+    if (needsEmptyComposeConfirmation) {
+      await confirmEmptyComposeIfVisible(page, 1500)
+    }
+
+    const [composeClosed, sendOutcome] = await Promise.all([
+      waitForComposeClosed(page, composeToken),
+      waitForSendOutcome(page, composeToken),
+    ])
+
+    if (sendOutcome === 'sent' && composeClosed) {
+      confirmedSent = true
+      await wait(800)
+      return
+    }
+
+    if (sendOutcome === 'sent' && !composeClosed) {
+      throw stopCampaignError(
+        'Gmail showed a Send notice, but the compose stayed open. Campaign stopped because the result was inconsistent.'
+      )
+    }
+
+    if (sendOutcome === 'error') {
+      throw new Error('Gmail reported that the message could not be sent.')
+    }
+
+    if (composeClosed) {
+      throw stopCampaignError(
+        'Gmail closed Compose, but delivery could not be confirmed. Campaign stopped to prevent a duplicate.'
+      )
+    }
+
+    throw new Error(
+      'Gmail did not complete Send. The compose will be discarded before continuing.'
+    )
+  } catch (error) {
+    await clearSendOutcomeObserver(page, composeToken)
+    const composeStillOpen =
+      composeToken && (await isOwnedComposeOpen(page, composeToken))
+
+    if (composeStillOpen) {
+      const cleaned = await discardOwnedCompose(page, composeToken)
+      if (!cleaned) {
+        throw stopCampaignError(
+          `${error.message} Gmail Compose could not be cleaned up, so this profile was stopped.`
+        )
+      }
+    } else if (sendInitiated && !confirmedSent && !error.stopCampaign) {
+      throw stopCampaignError(
+        `${error.message} Delivery is uncertain, so this profile was stopped to prevent a duplicate.`
+      )
+    }
+
+    throw error
+  }
 }
 
 function createWindow() {
@@ -2229,6 +2675,7 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
           recipientEmail: email,
         })
       } catch (error) {
+        const mustStopProfile = Boolean(error.stopCampaign)
         failed += 1
         processed += 1
         emitProgress({
@@ -2240,6 +2687,7 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
           recipientEmail: email,
           error: error.message,
         })
+        if (mustStopProfile) throw error
       } finally {
         if (
           payload.attachmentTemplate &&

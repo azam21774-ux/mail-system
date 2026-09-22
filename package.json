@@ -9,6 +9,7 @@
     "dev": "node scripts/dev.mjs",
     "admin": "node server/license-server.cjs",
     "build": "vite build",
+    "test": "node --test tests/*.test.cjs",
     "start": "electron .",
     "package:mac": "npm run build && electron-builder --mac dmg --publish never",
     "package:mac:zip": "npm run build && electron-builder --mac zip --publish never",
