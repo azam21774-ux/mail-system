@@ -1663,6 +1663,16 @@ async function waitForVisibleComposeSelector(
   throw new Error('Gmail Compose did not show the required control.')
 }
 
+async function getOwnedComposeHandle(page, token) {
+  const compose = await page.$(ownedComposeSelector(token))
+  if (!compose) {
+    throw stopCampaignError(
+      'Gmail replaced the owned Compose before the next field could be filled. Profile stopped to prevent cross-compose input.'
+    )
+  }
+  return compose
+}
+
 async function getOwnedAttachmentState(page, token) {
   return page.evaluate(
     (composeToken, attachmentSelector, progressSelector) => {
@@ -2279,14 +2289,19 @@ async function sendOneEmail(
       await waitForAttachmentUpload(page, composeToken)
     }
 
+    // Gmail can replace the compose subtree while its recipient editor
+    // initializes. Re-query the owned root instead of using a stale handle
+    // captured immediately after the Compose click.
+    compose = await getOwnedComposeHandle(page, composeToken)
     const recipientInput = await waitForVisibleComposeSelector(
       compose,
-      'input[aria-label="To recipients"], input[role="combobox"][aria-autocomplete="list"]'
+      'input[aria-label="To recipients"], input[aria-label*="recipient" i], input[name="to"], input[placeholder*="recipient" i], input[role="combobox"][aria-autocomplete="list"], [role="combobox"][aria-label*="To" i]'
     )
     await recipientInput.click()
     await recipientInput.type(email, { delay: typingDelay })
     await page.keyboard.press('Enter')
 
+    compose = await getOwnedComposeHandle(page, composeToken)
     const subjectInput = await waitForVisibleComposeSelector(
       compose,
       'input[name="subjectbox"]'
@@ -2294,6 +2309,7 @@ async function sendOneEmail(
     await subjectInput.click()
     await subjectInput.type(expandedSubject, { delay: typingDelay })
 
+    compose = await getOwnedComposeHandle(page, composeToken)
     const messageBody = await waitForVisibleComposeSelector(
       compose,
       '[aria-label="Message Body"][contenteditable="true"], div[role="textbox"][contenteditable="true"]'
@@ -2335,6 +2351,7 @@ async function sendOneEmail(
     await keepGmailPageActive(page)
     await dismissGmailNotificationSnackbar(page)
     await armSendOutcomeObserver(page, composeToken)
+    compose = await getOwnedComposeHandle(page, composeToken)
     const clickedSendButton = await clickGmailSend(compose)
 
     if (!clickedSendButton) {
