@@ -1493,6 +1493,7 @@ const composeUploadProgressSelector =
   '[role="progressbar"], [aria-label*="Uploading" i], [aria-label*="uploading" i]'
 const composeRecipientSelector = [
   'input[aria-label="To recipients"]',
+  'input[role="combobox"][aria-label="To recipients"]',
   '[aria-label*="recipient" i]',
   'input[name="to"]',
   '[placeholder*="recipient" i]',
@@ -2305,10 +2306,19 @@ async function sendOneEmail(
       composeRecipientSelector
     )
     await recipientInput.click()
-    // Current Gmail can render Recipients as a role=combobox div instead of
-    // an input. Typing through the focused page target works for both DOM
-    // variants and still keeps the target inside the owned compose.
-    await page.keyboard.type(email, { delay: typingDelay })
+
+    // Gmail's PeopleKit editor can replace the input immediately after it is
+    // clicked. Re-query the owned compose and type through the actual field
+    // handle so the exact input receives the text even if focus moved during
+    // the click. ElementHandle.type supports both input and contenteditable
+    // combobox variants.
+    compose = await getOwnedComposeHandle(page, composeToken)
+    const activeRecipientInput = await waitForVisibleComposeSelector(
+      compose,
+      composeRecipientSelector
+    )
+    await activeRecipientInput.focus()
+    await activeRecipientInput.type(email, { delay: typingDelay })
     await page.keyboard.press('Enter')
 
     compose = await getOwnedComposeHandle(page, composeToken)

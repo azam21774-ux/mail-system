@@ -167,7 +167,8 @@ test(
         'Recipients'
       )
       await recipient.click()
-      await page.keyboard.type('recipient@example.com')
+      await recipient.focus()
+      await recipient.type('recipient@example.com')
       assert.equal(
         await recipient.evaluate((element) => element.textContent),
         'recipient@example.com'
