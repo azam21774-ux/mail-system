@@ -1349,10 +1349,9 @@ async function connectToGmail(port) {
     defaultViewport: null,
   })
   const pages = await browser.pages()
-  const gmailPages = pages.filter((candidate) =>
+  let page = pages.find((candidate) =>
     candidate.url().includes('mail.google.com')
   )
-  let page = gmailPages.at(-1)
 
   if (!page) {
     page = pages[0] || (await browser.newPage())
@@ -1759,6 +1758,39 @@ async function getOwnedAttachmentState(page, token) {
 }
 
 async function waitForAttachmentUpload(page, token) {
+  if (!token) {
+    await page.waitForFunction(
+      () => {
+        const visible = (element) => {
+          const style = window.getComputedStyle(element)
+          const rect = element.getBoundingClientRect()
+          return (
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            rect.width > 0 &&
+            rect.height > 0
+          )
+        }
+
+        const uploadStillRunning = Array.from(
+          document.querySelectorAll(
+            '[role="progressbar"], [aria-label*="Uploading" i], [aria-label*="uploading" i]'
+          )
+        ).some(visible)
+
+        const attachmentReady = Array.from(
+          document.querySelectorAll(
+            '[aria-label*="Remove attachment" i], [data-tooltip*="Remove attachment" i], [title*="Remove attachment" i], .aA6'
+          )
+        ).some(visible)
+
+        return attachmentReady && !uploadStillRunning
+      },
+      { timeout: 30000 }
+    )
+    return
+  }
+
   await page.waitForFunction(
     (composeToken, attachmentSelector, progressSelector, anchorAttribute) => {
       let root = document.querySelector(
@@ -2061,6 +2093,16 @@ async function confirmEmptyComposeIfVisible(page, timeout = 2500) {
   return false
 }
 
+async function pressSendShortcut(page) {
+  const modifier = process.platform === 'darwin' ? 'Meta' : 'Control'
+  await page.keyboard.down(modifier)
+  try {
+    await page.keyboard.press('Enter')
+  } finally {
+    await page.keyboard.up(modifier)
+  }
+}
+
 const gmailDialogHandlers = new WeakMap()
 
 function installGmailDialogHandler(page) {
@@ -2087,6 +2129,31 @@ function installGmailDialogHandler(page) {
 }
 
 async function waitForComposeClosed(page, token, timeout = 15000) {
+  if (!token) {
+    return page
+      .waitForFunction(
+        () => {
+          const subjectInput = document.querySelector(
+            'input[name="subjectbox"]'
+          )
+          if (!subjectInput) return true
+
+          const style = window.getComputedStyle(subjectInput)
+          const rect = subjectInput.getBoundingClientRect()
+          return (
+            style.display === 'none' ||
+            style.visibility === 'hidden' ||
+            subjectInput.getAttribute('aria-hidden') === 'true' ||
+            rect.width === 0 ||
+            rect.height === 0
+          )
+        },
+        { timeout: 10000 }
+      )
+      .then(() => true)
+      .catch(() => false)
+  }
+
   return page
     .waitForFunction(
       (composeToken, anchorAttribute) => {
@@ -2304,7 +2371,7 @@ function stopCampaignError(message) {
   return error
 }
 
-async function sendOneEmail(
+async function sendOneEmailIsolated(
   page,
   payload,
   row,
@@ -2503,6 +2570,128 @@ async function sendOneEmail(
       }, composeToken, composeAnchorAttribute)
       .catch(() => {})
   }
+}
+
+async function sendOneEmail(
+  page,
+  payload,
+  row,
+  attachmentPath,
+  templateContext = createTemplateContext(row)
+) {
+  await keepGmailPageActive(page)
+  const email = getRecipientValue(row, 'email')
+
+  if (!email) {
+    throw new Error('This CSV row does not contain an email address.')
+  }
+
+  const context = templateContext
+  const expandedSubject = expandTemplate(payload.subject, row, context)
+  const body = expandTemplate(payload.body, row, context)
+  const bodyText = body
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .trim()
+  const needsEmptyComposeConfirmation =
+    !expandedSubject.trim() || !bodyText
+  const typingDelay = Math.max(Number(payload.typingDelayMs) || 0, 0)
+  const composeButton = await page.waitForSelector(
+    '[gh="cm"], [aria-label="Compose"], [role="button"][aria-label="Compose"]',
+    { visible: true, timeout: 15000 }
+  )
+
+  await composeButton.click()
+
+  if (attachmentPath) {
+    const fileInput = await page
+      .waitForSelector('input[type="file"]', { timeout: 3000 })
+      .catch(() => null)
+
+    if (fileInput) {
+      await fileInput.uploadFile(attachmentPath)
+    } else {
+      const attachmentButton = await page.waitForSelector(
+        '[command="Files"], [aria-label*="Attach"], .a1.aaA.aMZ',
+        { visible: true, timeout: 15000 }
+      )
+      const [fileChooser] = await Promise.all([
+        page.waitForFileChooser(),
+        attachmentButton.click(),
+      ])
+      await fileChooser.accept([attachmentPath])
+    }
+
+    await waitForAttachmentUpload(page)
+  }
+
+  const recipientInput = await page.waitForSelector(
+    'input[aria-label="To recipients"], input[role="combobox"][aria-autocomplete="list"]',
+    { visible: true, timeout: 15000 }
+  )
+  await recipientInput.click()
+  await recipientInput.type(email, { delay: typingDelay })
+  await page.keyboard.press('Enter')
+
+  const subjectInput = await page.waitForSelector('input[name="subjectbox"]', {
+    visible: true,
+    timeout: 15000,
+  })
+  await subjectInput.click()
+  await subjectInput.type(expandedSubject, { delay: typingDelay })
+
+  const messageBody = await page.waitForSelector(
+    '[aria-label="Message Body"][contenteditable="true"], div[role="textbox"][contenteditable="true"]',
+    { visible: true, timeout: 15000 }
+  )
+  await messageBody.click()
+
+  const useHtml = Boolean(payload.htmlMode || looksLikeHtml(body))
+
+  if (useHtml) {
+    await messageBody.evaluate((element, html) => {
+      element.focus()
+      element.innerHTML = html
+      element.dispatchEvent(
+        new InputEvent('input', {
+          bubbles: true,
+          inputType: 'insertHTML',
+          data: html,
+        })
+      )
+      element.dispatchEvent(new Event('change', { bubbles: true }))
+    }, body)
+  } else {
+    await messageBody.type(body, { delay: typingDelay })
+  }
+
+  await keepGmailPageActive(page)
+  await dismissGmailNotificationSnackbar(page)
+  const clickedSendButton = await clickGmailSend(page)
+
+  if (!clickedSendButton) {
+    await pressSendShortcut(page)
+  }
+
+  if (needsEmptyComposeConfirmation) {
+    await confirmEmptyComposeIfVisible(page, 1000)
+  }
+
+  let sent = await waitForComposeClosed(page)
+
+  if (!sent && clickedSendButton) {
+    await pressSendShortcut(page)
+    if (needsEmptyComposeConfirmation) {
+      await confirmEmptyComposeIfVisible(page, 1000)
+    }
+    sent = await waitForComposeClosed(page)
+  }
+
+  if (!sent) {
+    throw new Error('Gmail did not close the compose window after Send.')
+  }
+
+  await wait(800)
 }
 
 function createWindow() {
@@ -2782,7 +2971,6 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
           recipientEmail: email,
         })
       } catch (error) {
-        const mustStopProfile = Boolean(error.stopCampaign)
         failed += 1
         processed += 1
         emitProgress({
@@ -2794,7 +2982,6 @@ ipcMain.handle('run-campaign', async (_event, payload) => {
           recipientEmail: email,
           error: error.message,
         })
-        if (mustStopProfile) throw error
       } finally {
         if (
           payload.attachmentTemplate &&
