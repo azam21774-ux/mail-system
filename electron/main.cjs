@@ -1491,6 +1491,7 @@ const composeAttachmentSelector =
   '[aria-label*="Remove attachment" i], [data-tooltip*="Remove attachment" i], [title*="Remove attachment" i], .aYF'
 const composeUploadProgressSelector =
   '[role="progressbar"], [aria-label*="Uploading" i], [aria-label*="uploading" i]'
+const composeAnchorAttribute = 'data-mail-system-compose-anchor'
 const composeRecipientSelector = [
   'input[aria-label="To recipients"]',
   'input[role="combobox"][aria-label="To recipients"]',
@@ -1561,6 +1562,8 @@ async function openOwnedCompose(page, token) {
 
         if (!newRoot) return false
         newRoot.setAttribute('data-mail-system-compose', composeToken)
+        const subject = newRoot.querySelector('input[name="subjectbox"]')
+        subject?.setAttribute(composeAnchorAttribute, composeToken)
         return true
       },
       { timeout: 15000 },
@@ -1606,6 +1609,10 @@ async function openOwnedCompose(page, token) {
         )
         if (unclaimedRoot) {
           unclaimedRoot.setAttribute('data-mail-system-compose', composeToken)
+          const subject = unclaimedRoot.querySelector(
+            'input[name="subjectbox"]'
+          )
+          subject?.setAttribute(composeAnchorAttribute, composeToken)
           return true
         }
         return false
@@ -1630,9 +1637,39 @@ async function openOwnedCompose(page, token) {
             element.removeAttribute('data-mail-system-compose-snapshot')
           }
         }
+        for (const element of document.querySelectorAll(
+          `[${composeAnchorAttribute}]`
+        )) {
+          if (element.getAttribute(composeAnchorAttribute) === snapshotToken) {
+            element.removeAttribute(composeAnchorAttribute)
+          }
+        }
       }, token)
       .catch(() => {})
   }
+}
+
+async function rebindOwnedCompose(page, token) {
+  return page
+    .evaluate((composeToken, anchorAttribute) => {
+      const ownedSelector = `[data-mail-system-compose="${composeToken}"]`
+      if (document.querySelector(ownedSelector)) return true
+
+      const anchor = document.querySelector(
+        `[${anchorAttribute}="${composeToken}"]`
+      )
+      if (!anchor) return false
+
+      const root =
+        anchor.closest('[role="dialog"]') ||
+        anchor.closest('.M9') ||
+        anchor.closest('.AD')
+      if (!root) return false
+
+      root.setAttribute('data-mail-system-compose', composeToken)
+      return true
+    }, token, composeAnchorAttribute)
+    .catch(() => false)
 }
 
 async function waitForVisibleComposeSelector(
@@ -1672,6 +1709,7 @@ async function waitForVisibleComposeSelector(
 }
 
 async function getOwnedComposeHandle(page, token) {
+  await rebindOwnedCompose(page, token)
   const compose = await page.$(ownedComposeSelector(token))
   if (!compose) {
     throw stopCampaignError(
@@ -1682,6 +1720,7 @@ async function getOwnedComposeHandle(page, token) {
 }
 
 async function getOwnedAttachmentState(page, token) {
+  await rebindOwnedCompose(page, token)
   return page.evaluate(
     (composeToken, attachmentSelector, progressSelector) => {
       const root = document.querySelector(
@@ -1727,10 +1766,21 @@ async function getOwnedAttachmentState(page, token) {
 
 async function waitForAttachmentUpload(page, token) {
   await page.waitForFunction(
-    (composeToken, attachmentSelector, progressSelector) => {
-      const root = document.querySelector(
+    (composeToken, attachmentSelector, progressSelector, anchorAttribute) => {
+      let root = document.querySelector(
         `[data-mail-system-compose="${composeToken}"]`
       )
+      if (!root) {
+        const anchor = document.querySelector(
+          `[${anchorAttribute}="${composeToken}"]`
+        )
+        root =
+          anchor?.closest('[role="dialog"]') ||
+          anchor?.closest('.M9') ||
+          anchor?.closest('.AD') ||
+          null
+        root?.setAttribute('data-mail-system-compose', composeToken)
+      }
       if (!root || !root.isConnected) return false
 
       const visible = (element) => {
@@ -1762,7 +1812,8 @@ async function waitForAttachmentUpload(page, token) {
     { timeout: 45000 },
     token,
     composeAttachmentSelector,
-    composeUploadProgressSelector
+    composeUploadProgressSelector,
+    composeAnchorAttribute
   )
 
   // Gmail can briefly show one completed chip before a delayed duplicate is
