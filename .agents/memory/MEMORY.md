@@ -1,6 +1,7 @@
 - [External npm lockfiles](external-npm-lockfiles.md) — keep package-lock resolved URLs on the public npm registry when installs must work outside Replit.
 - [Gmail profile readiness](gmail-profile-readiness.md) — treat a Chrome profile as ready only after Gmail's authenticated Compose UI is visible.
 - [Gmail send overlays](gmail-send-overlays.md) — dismiss Gmail notification snackbars before locating or clicking the compose Send control.
+- [Gmail sending compatibility](gmail-sending-compatibility.md) — when Compose DOM isolation causes live Gmail regressions, prefer the proven legacy page-level flow.
 - [XLSX floating image rendering](xlsx-floating-image-rendering.md) — crop to HTML layout bounds and use an absolute Excel anchor for movable image attachments.
 - [Windows Electron packaging](windows-electron-packaging.md) — build native dependencies and NSIS installers on a Windows runner, not by cross-packaging from Linux.
 - [Mail System licensing](license-architecture.md) — keep admin/license server code outside Electron builds; packaged clients only use the remote activation API.
