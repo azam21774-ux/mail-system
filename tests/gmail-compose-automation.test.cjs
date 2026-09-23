@@ -57,6 +57,7 @@ function loadComposeHelpers() {
       openOwnedCompose,
       ownedComposeSelector,
       composeRecipientSelector,
+      rebindOwnedCompose,
       waitForComposeClosed,
       waitForSendOutcome,
       waitForVisibleComposeSelector,
@@ -223,6 +224,40 @@ test(
       assert.equal(
         (await helpers.getOwnedAttachmentState(page, token)).attachments,
         2
+      )
+    } finally {
+      await browser.close()
+    }
+  }
+)
+
+test(
+  'rebinds the owned compose after Gmail replaces its root attribute',
+  { skip: !chromiumPath },
+  async () => {
+    const browser = await puppeteer.launch({
+      executablePath: chromiumPath,
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    })
+
+    try {
+      const page = await browser.newPage()
+      const token = 'rebind-compose-test'
+      await page.setContent(`
+        <style>[role="dialog"] { display: block; width: 240px; height: 160px; }</style>
+        <div role="dialog" data-mail-system-compose-anchor="${token}">
+          <input name="subjectbox">
+        </div>
+      `)
+
+      assert.equal(await helpers.rebindOwnedCompose(page, token), true)
+      assert.equal(
+        await page.$eval(
+          `[data-mail-system-compose="${token}"]`,
+          (element) => element.getAttribute('role')
+        ),
+        'dialog'
       )
     } finally {
       await browser.close()

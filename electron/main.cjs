@@ -1531,7 +1531,7 @@ async function openOwnedCompose(page, token) {
     await composeButton.click()
 
     await page.waitForFunction(
-      (composeToken) => {
+      (composeToken, anchorAttribute) => {
         const visible = (element) => {
           const style = window.getComputedStyle(element)
           const rect = element.getBoundingClientRect()
@@ -1563,11 +1563,12 @@ async function openOwnedCompose(page, token) {
         if (!newRoot) return false
         newRoot.setAttribute('data-mail-system-compose', composeToken)
         const subject = newRoot.querySelector('input[name="subjectbox"]')
-        subject?.setAttribute(composeAnchorAttribute, composeToken)
+        subject?.setAttribute(anchorAttribute, composeToken)
         return true
       },
       { timeout: 15000 },
-      token
+      token,
+      composeAnchorAttribute
     )
 
     const compose = await page.$(ownedComposeSelector(token))
@@ -1580,7 +1581,7 @@ async function openOwnedCompose(page, token) {
     // The root can appear just as the wait times out. Claim it before cleanup
     // so sendOneEmail can still discard the draft instead of leaking it.
     const claimed = await page
-      .evaluate((composeToken) => {
+      .evaluate((composeToken, anchorAttribute) => {
         const visible = (element) => {
           const style = window.getComputedStyle(element)
           const rect = element.getBoundingClientRect()
@@ -1612,11 +1613,11 @@ async function openOwnedCompose(page, token) {
           const subject = unclaimedRoot.querySelector(
             'input[name="subjectbox"]'
           )
-          subject?.setAttribute(composeAnchorAttribute, composeToken)
+          subject?.setAttribute(anchorAttribute, composeToken)
           return true
         }
         return false
-      }, token)
+      }, token, composeAnchorAttribute)
       .catch(() => false)
     if (!claimed) {
       throw stopCampaignError(
@@ -1635,13 +1636,6 @@ async function openOwnedCompose(page, token) {
             snapshotToken
           ) {
             element.removeAttribute('data-mail-system-compose-snapshot')
-          }
-        }
-        for (const element of document.querySelectorAll(
-          `[${composeAnchorAttribute}]`
-        )) {
-          if (element.getAttribute(composeAnchorAttribute) === snapshotToken) {
-            element.removeAttribute(composeAnchorAttribute)
           }
         }
       }, token)
@@ -2095,10 +2089,21 @@ function installGmailDialogHandler(page) {
 async function waitForComposeClosed(page, token, timeout = 15000) {
   return page
     .waitForFunction(
-      (composeToken) => {
-        const root = document.querySelector(
+      (composeToken, anchorAttribute) => {
+        let root = document.querySelector(
           `[data-mail-system-compose="${composeToken}"]`
         )
+        if (!root) {
+          const anchor = document.querySelector(
+            `[${anchorAttribute}="${composeToken}"]`
+          )
+          root =
+            anchor?.closest('[role="dialog"]') ||
+            anchor?.closest('.M9') ||
+            anchor?.closest('.AD') ||
+            null
+          root?.setAttribute('data-mail-system-compose', composeToken)
+        }
         if (!root || !root.isConnected) return true
 
         const style = window.getComputedStyle(root)
@@ -2112,13 +2117,15 @@ async function waitForComposeClosed(page, token, timeout = 15000) {
         )
       },
       { timeout },
-      token
+      token,
+      composeAnchorAttribute
     )
     .then(() => true)
     .catch(() => false)
 }
 
 async function isOwnedComposeOpen(page, token) {
+  await rebindOwnedCompose(page, token)
   return page
     .evaluate((composeToken) => {
       const root = document.querySelector(
@@ -2483,6 +2490,18 @@ async function sendOneEmail(
     }
 
     throw error
+  } finally {
+    await page
+      .evaluate((composeToken, anchorAttribute) => {
+        for (const element of document.querySelectorAll(
+          `[${anchorAttribute}]`
+        )) {
+          if (element.getAttribute(anchorAttribute) === composeToken) {
+            element.removeAttribute(anchorAttribute)
+          }
+        }
+      }, composeToken, composeAnchorAttribute)
+      .catch(() => {})
   }
 }
 
