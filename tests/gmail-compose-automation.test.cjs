@@ -56,8 +56,10 @@ function loadComposeHelpers() {
       isOwnedComposeOpen,
       openOwnedCompose,
       ownedComposeSelector,
+      composeRecipientSelector,
       waitForComposeClosed,
       waitForSendOutcome,
+      waitForVisibleComposeSelector,
     }
   `
   vm.runInNewContext(
@@ -101,7 +103,7 @@ test(
           root.setAttribute('role', 'dialog')
           root.innerHTML = `
             <input name="subjectbox">
-            <input aria-label="To recipients">
+            <div role="combobox" aria-label="Recipients" contenteditable="true"></div>
             <div aria-label="Message Body" contenteditable="true"></div>
             <button command="discard" aria-label="Discard draft">Discard</button>
           `
@@ -125,6 +127,51 @@ test(
       )
       assert.equal(await helpers.discardOwnedCompose(page, token), true)
       assert.equal(await helpers.isOwnedComposeOpen(page, token), false)
+    } finally {
+      await browser.close()
+    }
+  }
+)
+
+test(
+  'finds Gmail recipient combobox variants inside the owned compose',
+  { skip: !chromiumPath },
+  async () => {
+    const browser = await puppeteer.launch({
+      executablePath: chromiumPath,
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    })
+
+    try {
+      const page = await browser.newPage()
+      await page.setContent(`
+        <style>
+          [role="dialog"], [role="combobox"] {
+            display: block;
+            width: 240px;
+            height: 30px;
+          }
+        </style>
+        <div role="dialog">
+          <div role="combobox" aria-label="Recipients" contenteditable="true"></div>
+        </div>
+      `)
+      const compose = await page.$('[role="dialog"]')
+      const recipient = await helpers.waitForVisibleComposeSelector(
+        compose,
+        helpers.composeRecipientSelector
+      )
+      assert.equal(
+        await recipient.evaluate((element) => element.getAttribute('aria-label')),
+        'Recipients'
+      )
+      await recipient.click()
+      await page.keyboard.type('recipient@example.com')
+      assert.equal(
+        await recipient.evaluate((element) => element.textContent),
+        'recipient@example.com'
+      )
     } finally {
       await browser.close()
     }

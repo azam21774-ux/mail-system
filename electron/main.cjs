@@ -1491,6 +1491,13 @@ const composeAttachmentSelector =
   '[aria-label*="Remove attachment" i], [data-tooltip*="Remove attachment" i], [title*="Remove attachment" i], .aYF'
 const composeUploadProgressSelector =
   '[role="progressbar"], [aria-label*="Uploading" i], [aria-label*="uploading" i]'
+const composeRecipientSelector = [
+  'input[aria-label="To recipients"]',
+  '[aria-label*="recipient" i]',
+  'input[name="to"]',
+  '[placeholder*="recipient" i]',
+  '[role="combobox"]',
+].join(', ')
 
 function ownedComposeSelector(token) {
   return `[data-mail-system-compose="${token}"]`
@@ -2295,10 +2302,13 @@ async function sendOneEmail(
     compose = await getOwnedComposeHandle(page, composeToken)
     const recipientInput = await waitForVisibleComposeSelector(
       compose,
-      'input[aria-label="To recipients"], input[aria-label*="recipient" i], input[name="to"], input[placeholder*="recipient" i], input[role="combobox"][aria-autocomplete="list"], [role="combobox"][aria-label*="To" i]'
+      composeRecipientSelector
     )
     await recipientInput.click()
-    await recipientInput.type(email, { delay: typingDelay })
+    // Current Gmail can render Recipients as a role=combobox div instead of
+    // an input. Typing through the focused page target works for both DOM
+    // variants and still keeps the target inside the owned compose.
+    await page.keyboard.type(email, { delay: typingDelay })
     await page.keyboard.press('Enter')
 
     compose = await getOwnedComposeHandle(page, composeToken)
